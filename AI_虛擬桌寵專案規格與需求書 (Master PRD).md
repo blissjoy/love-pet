@@ -1,6 +1,6 @@
-# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.14)**
+# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.15)**
 
-**【版本資訊】** Master PRD v2.1.14（2026-11-19 定稿）｜修訂重點：明確指定 8.E.3 TC-MH-05 測試初始狀態中 lowMoodDuration 已達標之計時器前置條件（below20Hours \= 48.0、below40Hours \= 72.0），消除測試起始計時歧義；保留所有已確認核心數值、每日 3 糧 \+ 4 水 \+ 3 互動標準方案與 TC-09 B/C 基準不變。
+**【版本資訊】** Master PRD v2.1.15（2026-11-19 定稿）｜修訂重點：依 PET-20 審查補強 8.E.3 TC-MH-05 測試初始資料與時間區間（明確指定 hunger \= 10、hydration \= 100 隔離單測飢餓扣血、明確說明由 below20Hours \= 48.0 門檻跨過後即 \> 48.0 啟動 \-0.1/hr，並補齊總推進 20.0 小時 之各階段時間與 health \= 10.0 下限斷言）；核心遊戲數值、每日 3 糧 \+ 4 水 \+ 3 互動方案與 TC-09 B/C 基準完全保留不變。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -401,9 +401,9 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.14 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.15 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
-4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.14 未變更）
+4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.15 未變更）
 
 ### **8.E.2 核心自動化驗收測試案例 (Vitest Acceptance Criteria)**
 
@@ -478,7 +478,7 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
    5. **TC-MH-02（Mood 20\~39 緩慢扣血與 72h 門檻）：** 驗證 Mood \= 30 時，前 72 小時 Health 不扣減；超過 72 小時後每小時扣減 0.05 Health。  
    6. **TC-MH-03（Mood 0\~19 扣血與 48h 門檻）：** 驗證 Mood \= 10 時，前 48 小時 Health 不扣減；超過 48 小時後每小時扣減 0.1 Health（不與 \-0.05 疊加）。  
    7. **TC-MH-04（Health 40 安全地板 — 隔離測試）：** 在保持 Hunger \>= 60 且 Hydration \>= 60（確保不觸發飢餓/缺水扣血）的前提下，設定初始 Health \= 40.5 且 Mood \= 10 持續滿 48h 後再推進 10 小時，驗證當 Health 降至 40.0 的交點時 MoodHealthPenalty 扣減量強制歸 0，最終 Health 精確停在 40.0，絕不降至 39.95 或低於 40。  
-   8. **TC-MH-05（低心情扣血與飢餓/缺水扣血獨立疊加及 40 地板邊界）：** 設定測試初始狀態為 `health = 50`、`hunger < 20`（`-2.0/hr`）、`mood < 20`，且低心情計時器於測試開始前已達標（`lowMoodDuration = { below40Hours: 72.0, below20Hours: 48.0 }`，確保 `-0.1/hr` 立即生效）：(1) 驗證 `health > 40` 區間內總扣血速度為 `-2.1/hr`（約 `4.7619 小時` 精確抵達 `health = 40`）；(2) 抵達 `health = 40` 交點後，`MoodHealthPenalty` 立即停止（變為 `0`），`Hunger/Hydration` 扣血繼續以 `-2.0/hr` 執行，使 `health` 正常跌入 `CRITICAL`（`< 40`）直至保護下限 `10`。  
+   8. **TC-MH-05（低心情扣血與飢餓扣血獨立疊加、40 地板邊界與 10 下限斷言）：** 測試起點設為 Day 1 `08:00`，初始狀態明確指定為 `health = 50.0`、`hunger = 10.0`（`< 20`，單獨觸發 `-2.0/hr` 飢餓扣血）、`hydration = 100.0`（全程維持 `>= 20`，隔離缺水影響以僅測 `hunger < 20`）、`mood = 10.0`（`< 20`），且低心情計時器起始位於門檻邊界 `lowMoodDuration = { below40Hours: 72.0, below20Hours: 48.0 }`（依 8.C.1 規則，推進時間使 `below20Hours > 48.0` 時立即自跨過 48 小時門檻後起算 `-0.1/hr`，非將等於 48 視為已超過門檻）。連續推進 **20.0 小時**（Day 1 `08:00` ➔ Day 2 `04:00`，結束時 `hydration = 34.0 >= 20`）：(1) **階段 1（0 \~ 10/2.1 ≈ 4.7619 小時）**：`health > 40` 區間內總扣血速度為 `-2.1/hr`，於約 `4.7619 小時` 精確抵達 `health = 40.0`；(2) **階段 2（4.7619 \~ 19.7619 小時，共 15.0 小時）**：抵達 `health = 40.0` 交點後，`MoodHealthPenalty` 立即停止（變為 `0`），僅 `hunger < 20` 繼續以 `-2.0/hr` 扣血，使 `health` 正常跌入 `CRITICAL`（`< 40`）並於累計約 `19.7619 小時` 精確抵達保護下限 `health = 10.0`；(3) **階段 3（19.7619 \~ 20.0 小時）**：斷言 `20.0 小時` 結束時 `health` 嚴格維持於保護下限 `10.0`，不得低於 `10`。  
    9. **TC-MH-06（Mood 恢復時立即重置計時器）：** 驗證 below40Hours 累計至 50 小時後，透過撫摸使 Mood 升至 45，below40Hours 立即歸零；再次降至 30 時需重新累計 72 小時才開始扣血。  
    10. **TC-MH-07（NATURAL\_RECOVERY 分級速度 Mood \>= 70）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 75 時，恢復速度為 \+2.5/hr。  
    11. **TC-MH-08（NATURAL\_RECOVERY 分級速度 Mood 40\~69）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 50 時，恢復速度為 \+1.25/hr。  
