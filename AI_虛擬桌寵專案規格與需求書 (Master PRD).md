@@ -1,6 +1,6 @@
-# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.16)**
+# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.17)**
 
-**【版本資訊】** Master PRD v2.1.16（2026-11-19 定稿）｜修訂重點：依 PET-21 審查修正 8.C.1 步驟 4 與步驟 4.5 之 Health 扣血結算規則（將飢餓/缺水扣血與低心情扣血改為同一時間區段內之獨立速率，於 Health \> 40 時合併計算速率並精確切割 Health \= 40 交點；抵達 40 後 MoodHealthPenalty 立即歸 0，飢餓/缺水扣血繼續至保護下限 10，消除順序結算與 TC-MH-05 之矛盾）；完整保留 TC-MH-05、每日 3 糧 \+ 4 水 \+ 3 互動標準方案及所有既有 Recovery 公式與數值基準不變。
+**【版本資訊】** Master PRD v2.1.17（2026-11-19 定稿）｜修訂重點：依 PET-22 審查於 8.C.1 TimeEngine 門檻清單補齊 Health \= 10（飢餓/缺水 Health 保護下限）精確交點，並明確定義當 Health \> 10 且扣血速率為負時須計算 Health \= 10 精確交點、抵達 Health \= 10 後飢餓/缺水扣血速率立即歸零（0/hr）且後續區段不得低於 10；完整保留 TC-MH-05 全部數值、每日 3 糧 \+ 4 水 \+ 3 互動標準方案及所有既有 Recovery / MoodHealthPenalty 公式與已通過規格不變。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -327,10 +327,12 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 
 **【指令與時間模擬執行順序 (P1-4)】**  
 所有具有遊戲數值效果的 `GameCommand`（如 FeedPet、PetCat 等）在執行前，必須先呼叫 `TimeEngine.advanceTo(commandTimestamp)` 將遊戲狀態推進至該指令的有效時間點，再執行指令並套用數值變化。  
+**【指令與時間模擬執行順序 (P1-4)】**  
+所有具有遊戲數值效果的 `GameCommand`（如 FeedPet、PetCat 等）在執行前，必須先呼叫 `TimeEngine.advanceTo(commandTimestamp)` 將遊戲狀態推進至該指令的有效時間點，再執行指令並套用數值變化。  
 **【連續閾值交點切割與時間區段計算 (Threshold Crossing Split)】**  
 為徹底保證「一次補算 24 小時」與「任意時間點插入 GameCommand 分段補算」的浮點結果在數學上 100% 完全一致（誤差 \< 1e-9），TimeEngine 每次 advanceTo(now) 除按 0.25 小時（15 分鐘）基礎步長步進外，在推進時間區間 \[t\_start, t\_end\] 時，遇到以下任一狀態變化事件，必須建立精確交點切割 (Exact Boundary / Threshold Crossing Split)：  
 1\. 日夜時段邊界（每日 07:00 與 23:00）。  
-2\. 需求與健康狀態機門檻交點：Hunger \= 20、Hydration \= 20（扣血/額外懲罰門檻）、Hunger \= 50、Hydration \= 50（RECOVERY\_BOOST 門檻）、Hunger \= 60、Hydration \= 60、Mood \= 70（NATURAL\_RECOVERY 滿速門檻）、Mood \= 40（NATURAL\_RECOVERY 半速/低心情門檻）、Mood \= 20（嚴重低心情門檻）、Health \= 40（CRITICAL / 安全地板門檻）與 Health \= 100（滿血完成門檻）。**Signed Rate Threshold Crossing（帶正負號速率交點算式）：** 交點計算統一使用帶正負號的 ratePerHour（數值下降時 ratePerHour \< 0；數值上升時 ratePerHour \> 0；ratePerHour \= 0 時不存在由該區段速率產生的交點），交點時間戳公式為 t\_cross \= t\_start \+ ((targetThreshold \- currentValue) / ratePerHour) \* 3\_600\_000。只有當交點時間位於目前模擬區段內，且數值確實朝向該門檻移動時，才建立切割事件；當速率為 0、交點位於區段之外，或數值遠離門檻時，不得建立無效交點。所有交點仍須符合 TimeEngine 的精度要求，最終分段模擬結果誤差 \< 1e-9。**交點有效性與零時間事件過濾：** 數值門檻比較與時間戳去重之容差常數必須集中定義於核心共用常數模組（如 packages/game-core 之 TIME\_ENGINE\_CONSTANTS），嚴禁各模組自行設定不同容差：數值門檻比較統一採用 VALUE\_EPSILON \= 1e-9，時間戳事件去重統一採用 TIME\_EPSILON\_MS \= 1e-3（1 微秒，大於 IEEE 754 雙精度浮點於 Unix ms 時間戳量級之機器誤差）。建立 Threshold Crossing Event 時，除上述條件外，必須同時符合：(1) Math.abs(currentValue \- targetThreshold) \> VALUE\_EPSILON（數值已在 VALUE\_EPSILON 範圍內等於門檻時不建立交點）；(2) t\_cross 必須嚴格大於 t\_start \+ TIME\_EPSILON\_MS 且小於或等於 t\_end（t\_start \+ TIME\_EPSILON\_MS \< t\_cross \<= t\_end）；(3) 若計算結果與已處理事件時間差小於或等於 TIME\_EPSILON\_MS（Math.abs(t\_cross \- t\_existing) \<= TIME\_EPSILON\_MS），必須合併或忽略重複事件，不得重複建立零時間區段；(4) 交點處理完成後，必須立即更新目前數值與事件狀態，避免下一次迭代再次觸發相同交點。  
+2\. 需求與健康狀態機門檻交點：Hunger \= 20、Hydration \= 20（扣血/額外懲罰門檻）、Hunger \= 50、Hydration \= 50（RECOVERY\_BOOST 門檻）、Hunger \= 60、Hydration \= 60、Mood \= 70（NATURAL\_RECOVERY 滿速門檻）、Mood \= 40（NATURAL\_RECOVERY 半速/低心情門檻）、Mood \= 20（嚴重低心情門檻）、Health \= 10（飢餓/缺水 Health 保護下限）、Health \= 40（CRITICAL / MoodHealthPenalty 安全地板門檻）與 Health \= 100（滿血完成門檻）。當 Health \> 10 且扣血速率為負時，必須計算 Health \= 10 之精確交點；抵達 Health \= 10 後，飢餓/缺水扣血速率立即歸零（0/hr），且後續區段不得使 Health 低於 10。**Signed Rate Threshold Crossing（帶正負號速率交點算式）：** 交點計算統一使用帶正負號的 ratePerHour（數值下降時 ratePerHour \< 0；數值上升時 ratePerHour \> 0；ratePerHour \= 0 時不存在由該區段速率產生的交點），交點時間戳公式為 t\_cross \= t\_start \+ ((targetThreshold \- currentValue) / ratePerHour) \* 3\_600\_000。只有當交點時間位於目前模擬區段內，且數值確實朝向該門檻移動時，才建立切割事件；當速率為 0、交點位於區段之外，或數值遠離門檻時，不得建立無效交點。所有交點仍須符合 TimeEngine 的精度要求，最終分段模擬結果誤差 \< 1e-9。**交點有效性與零時間事件過濾：** 數值門檻比較與時間戳去重之容差常數必須集中定義於核心共用常數模組（如 packages/game-core 之 TIME\_ENGINE\_CONSTANTS），嚴禁各模組自行設定不同容差：數值門檻比較統一採用 VALUE\_EPSILON \= 1e-9，時間戳事件去重統一採用 TIME\_EPSILON\_MS \= 1e-3（1 微秒，大於 IEEE 754 雙精度浮點於 Unix ms 時間戳量級之機器誤差）。建立 Threshold Crossing Event 時，除上述條件外，必須同時符合：(1) Math.abs(currentValue \- targetThreshold) \> VALUE\_EPSILON（數值已在 VALUE\_EPSILON 範圍內等於門檻時不建立交點）；(2) t\_cross 必須嚴格大於 t\_start \+ TIME\_EPSILON\_MS 且小於或等於 t\_end（t\_start \+ TIME\_EPSILON\_MS \< t\_cross \<= t\_end）；(3) 若計算規則與已處理事件時間差小於或等於 TIME\_EPSILON\_MS（Math.abs(t\_cross \- t\_existing) \<= TIME\_EPSILON\_MS），必須合併或忽略重複事件，不得重複建立零時間區段；(4) 交點處理完成後，必須立即更新目前數值與事件狀態，避免下一次迭代再次觸發相同交點。  
 3\. 剩餘 Boost 額度耗盡時間點：t\_boost\_end \= t\_start \+ (2.0 \- recoveryBoostAccumulatedHours) \* 3\_600\_000。  
 4\. 低心情門檻與持續時間到期交點：Mood \= 40、Mood \= 20 穿越交點，以及 below40Hours 累計滿 72.0 小時、below20Hours 累計滿 48.0 小時的精確時間交點。  
 5\. 玩家數值 GameCommand 發生時間與 Care Pause 啟用/解除時間。  
@@ -343,13 +345,13 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 3. **步驟 3（更新 mood 與低需求額外懲罰 \- P0-1）：**  
    1. 基礎心情扣除 **1.25 \* periodFactor \* actualHours**（日間每小時 \-1.25，夜間每小時 \-0.375；每日 24 小時基礎心情總衰退為 23.0）。  
    2. 若步驟 2 更新後之 hunger \< 20 或 hydration \< 20，額外心情懲罰亦乘以時段係數，扣除 1.5 \* periodFactor \* actualHours（最低 0）。  
-4. **步驟 4（決定飢餓/缺水 Health 扣血速率 starvationHealthRate — 保護下限 10）：** 本步驟僅判定該時間區段內之飢餓/缺水扣血速率，**不得在步驟 4.5 判定前先行修改 health**：若該區段滿足 hunger \< 20 或 hydration \< 20（且 health \> 10），則 starvationHealthRate \= \-2.0/hr（不受夜間係數減免，最低保護下限為 10）；否則為 0/hr。  
+4. **步驟 4（決定飢餓/缺水 Health 扣血速率 starvationHealthRate — 保護下限 10）：** 本步驟僅判定該時間區段內之飢餓/缺水扣血速率，**不得在步驟 4.5 判定前先行修改 health**：若該區段滿足 hunger \< 20 或 hydration \< 20（且 health \> 10），則 starvationHealthRate \= \-2.0/hr（不受夜間係數減免，最低保護下限為 10）；當 health 精確抵達 10 時，starvationHealthRate 立即歸零為 0/hr，後續區段不得使 health 低於 10；未滿足條件時亦為 0/hr。  
 5. **步驟 4.5（決定獨立低心情健康懲罰速率 moodHealthRate 並與步驟 4 合併結算 — C. 混合模式，保護地板 40）：** 短期缺少陪伴僅降低 Mood，不影響 Health；唯有連續低心情達標才啟動極緩慢扣血，且與步驟 4 視為**同一時間區段內之獨立速率**合併結算，各自保留保護下限（飢餓/缺水最低 10；低心情最低 40）：  
    1. 短期缺少陪伴僅降低 Mood，不影響 Health；唯有連續低心情達標才啟動極緩慢扣血，且與飢餓/缺水扣血完全獨立：  
       1. 1\. Mood \>= 40：健康無影響，立即重置 below40Hours \= 0 與 below20Hours \= 0。  
       2. 2\. Mood 20 \~ 39：累加 below40Hours \+= actualHours（同時重置 below20Hours \= 0）；當 below40Hours \> 72.0 時，超出 72.0 小時的部分每小時扣除 Health \-0.05（不受夜間係數減免）。  
       3. 3\. Mood 0 \~ 19：同時累加 below40Hours \+= actualHours 與 below20Hours \+= actualHours；當 below20Hours \> 48.0 時，超出 48.0 小時的部分每小時扣除 Health \-0.1（不與 \-0.05 疊加，採較高之 \-0.1/hr）。  
-      4. **4\. 合併速率結算與 Health \= 40 / Health \= 10 精確交點切割：** 當區段起點 **health \> 40** 時，該區段之 Health 總扣血速率為 **totalHealthPenaltyRate \= starvationHealthRate \+ moodHealthRate**（例如同時滿足飢餓與 below20Hours \> 48.0 時為 \-2.0 \+ (-0.1) \= \-2.1/hr）。TimeEngine 必須依 Signed Rate Threshold Crossing 以 totalHealthPenaltyRate 精確切割 Health \= 40 交點，確保兩種扣血共同作用直至 health 精確抵達 40.0。當 **10 \< health \<= 40** 時，MoodHealthPenalty 立即停止（moodHealthRate 強制為 0/hr，絕不因低心情而將寵物推入 CRITICAL \< 40 或死亡），僅保留 starvationHealthRate（若滿足飢餓/缺水則維持 \-2.0/hr），並精確切割至保護下限 Health \= 10（最終 health \= Math.max(10, health \+ totalHealthPenaltyRate \* actualHours)；若僅有低心情扣血且 starvationHealthRate \=== 0，則 health 嚴格受 40 地板保護不得低於 40）。  
+      4. **4\. 合併速率結算與 Health \= 40 / Health \= 10 精確交點切割：** 當區段起點 **health \> 40** 時，該區段之 Health 總扣血速率為 **totalHealthPenaltyRate \= starvationHealthRate \+ moodHealthRate**（例如同時滿足飢餓與 below20Hours \> 48.0 時為 \-2.0 \+ (-0.1) \= \-2.1/hr）。TimeEngine 必須依 Signed Rate Threshold Crossing 以 totalHealthPenaltyRate 精確切割 Health \= 40 交點，確保兩種扣血共同作用直至 health 精確抵達 40.0。當 **10 \< health \<= 40** 時，MoodHealthPenalty 立即停止（moodHealthRate 強制為 0/hr，絕不因低心情而將寵物推入 CRITICAL \< 40 或死亡），僅保留 starvationHealthRate（若滿足飢餓/缺水則維持 \-2.0/hr），並精確切割至保護下限 Health \= 10；抵達 Health \= 10 交點後，飢餓/缺水扣血速率立即歸零（totalHealthPenaltyRate \= 0/hr），後續區段不得使 health 低於 10（最終 health \= Math.max(10, health \+ totalHealthPenaltyRate \* actualHours)；若僅有低心情扣血且 starvationHealthRate \=== 0，則 health 嚴格受 40 地板保護不得低於 40）。  
 6. **步驟 5（執行健康救援狀態機 Recovery State Machine \- P0-2, P0-4, P1-6）：**  
    1. **1\. NORMAL ➔ CRITICAL：** 當 health \< 40 時觸發一次轉換，僅在此轉換瞬間執行 recoveryBoostAccumulatedHours \= 0。  
    2. **2\. CRITICAL ➔ RECOVERY\_BOOST：** 處於 CRITICAL 狀態下，當滿足 hunger \>= 50 && hydration \>= 50 且 recoveryBoostAccumulatedHours \< 2.0 時轉入，每小時恢復 \+10.0 health（按 actualHours 計算），並累加 recoveryBoostAccumulatedHours \+= actualHours（上限 2.0）。  
@@ -401,9 +403,9 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.16 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.17 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
-4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.16 未變更）
+4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.17 未變更）
 
 ### **8.E.2 核心自動化驗收測試案例 (Vitest Acceptance Criteria)**
 
