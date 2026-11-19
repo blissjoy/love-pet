@@ -1,6 +1,6 @@
-# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.9)**
+# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.10)**
 
-**【版本資訊】** Master PRD v2.1.9（2026-11-19 定稿）｜修訂重點：補齊 TC-09 B-2（Day 1、Day 2\~4、Day 5 各時段）與 TC-09 情境 C（含 2 份凍乾零食水分 \-2）之完整逐步算式，消除審查與實作對照歧義；核心數值與系統架構與 v2.1.8 完全一致。
+**【版本資訊】** Master PRD v2.1.10（2026-11-19 定稿）｜修訂重點：修正 TC-09 情境 C 恢復期間每日早晚照護之需求門檻與自然回血暫停規則（移除全程 \>= 60 的錯誤假設，補齊含夜間回血之完整 24 小時 Recovery 驗收要求與逐步模擬時間表，精確於 Day 3 12:40 滿血）；將 8.C.1 交點公式升級為帶正負號速率（Signed Rate Threshold Crossing）以統一涵蓋下降與上升交點並明定無效交點過濾條件；保留所有已確認核心數值與 TC-09 B-2 基準不變。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -330,7 +330,7 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 **【連續閾值交點切割與時間區段計算 (Threshold Crossing Split)】**  
 為徹底保證「一次補算 24 小時」與「任意時間點插入 GameCommand 分段補算」的浮點結果在數學上 100% 完全一致（誤差 \< 1e-9），TimeEngine 每次 advanceTo(now) 除按 0.25 小時（15 分鐘）基礎步長步進外，在推進時間區間 \[t\_start, t\_end\] 時，遇到以下任一狀態變化事件，必須建立精確交點切割 (Exact Boundary / Threshold Crossing Split)：  
 1\. 日夜時段邊界（每日 07:00 與 23:00）。  
-2\. 需求與健康狀態機門檻交點：Hunger \= 20、Hydration \= 20（扣血/額外懲罰門檻）、Hunger \= 50、Hydration \= 50（RECOVERY\_BOOST 門檻）、Hunger \= 60、Hydration \= 60、Mood \= 70（NATURAL\_RECOVERY 滿速門檻）、Mood \= 40（NATURAL\_RECOVERY 半速/低心情門檻）、Mood \= 20（嚴重低心情門檻）、Health \= 40（CRITICAL / 安全地板門檻）與 Health \= 100（滿血完成門檻）。交點時間戳算式 t\_cross \= t\_start \+ ((currentValue \- targetThreshold) / decayRatePerHour) \* 3\_600\_000。  
+2\. 需求與健康狀態機門檻交點：Hunger \= 20、Hydration \= 20（扣血/額外懲罰門檻）、Hunger \= 50、Hydration \= 50（RECOVERY\_BOOST 門檻）、Hunger \= 60、Hydration \= 60、Mood \= 70（NATURAL\_RECOVERY 滿速門檻）、Mood \= 40（NATURAL\_RECOVERY 半速/低心情門檻）、Mood \= 20（嚴重低心情門檻）、Health \= 40（CRITICAL / 安全地板門檻）與 Health \= 100（滿血完成門檻）。**Signed Rate Threshold Crossing（帶正負號速率交點算式）：** 交點計算統一使用帶正負號的 ratePerHour（數值下降時 ratePerHour \< 0；數值上升時 ratePerHour \> 0；ratePerHour \= 0 時不存在由該區段速率產生的交點），交點時間戳公式為 t\_cross \= t\_start \+ ((targetThreshold \- currentValue) / ratePerHour) \* 3\_600\_000。只有當交點時間位於目前模擬區段內，且數值確實朝向該門檻移動時，才建立切割事件；當速率為 0、交點位於區段之外，或數值遠離門檻時，不得建立無效交點。所有交點仍須符合 TimeEngine 的精度要求，最終分段模擬結果誤差 \< 1e-9。  
 3\. 剩餘 Boost 額度耗盡時間點：t\_boost\_end \= t\_start \+ (2.0 \- recoveryBoostAccumulatedHours) \* 3\_600\_000。  
 4\. 低心情門檻與持續時間到期交點：Mood \= 40、Mood \= 20 穿越交點，以及 below40Hours 累計滿 72.0 小時、below20Hours 累計滿 48.0 小時的精確時間交點。  
 5\. 玩家數值 GameCommand 發生時間與 Care Pause 啟用/解除時間。  
@@ -402,7 +402,7 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.9 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.10 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
 4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。
 
@@ -436,11 +436,39 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
       \- **Day 2 \~ Day 4 穩態回血（已處於 NATURAL\_RECOVERY，無 Boost，每日淨回血 \+15.5 Health/日）：** 每日 08:00 照護後 Mood 均回升至 73.0，故 08:00 \~ 10:24（2.4h，Mood \>= 70）回血 2.4 × 2.5 \= \+6.0，10:24 \~ 18:00（7.6h，Mood 40\~69）回血 7.6 × 1.25 \= \+9.5，每日合計 \+15.5 且零扣血。各日 08:00 照護前精確為：Day 3 08:00 達 56.0（40.5 \+ 15.5）、Day 4 08:00 達 71.5（56.0 \+ 15.5）、Day 5 08:00 達 87.0（71.5 \+ 15.5）。  
       \- **Day 5 滿血重置驗證：** Day 5 08:00 起算（Health \= 87.0），經 08:00 \~ 10:24（2.4h × \+2.5/hr \= \+6.0）達 93.0；接續 10:24 \~ 16:00（5.6h × \+1.25/hr \= \+7.0），於 Day 5 16:00 精確達成 Health \= 93.0 \+ 7.0 \= 100.0 並自動重置為 RecoveryState \= "NORMAL"、recoveryBoostAccumulatedHours \= 0。  
       \- **Day 6 \~ Day 60：** 全程維持 Health \= 100.0、RecoveryState \= "NORMAL"（每日 08:00 照護前 Hunger \= 26.4、Hydration \= 26.4、Mood \= 50.0、below40Hours \= 0、below20Hours \= 0，每日 Health 扣減 0），證明每日一次免費照護具備完整長期救援與維持健康能力。  
-      \- **長期僅於 08:00 餵食飲水obut不陪伴情境驗證（隔離飢餓與缺水懲罰，依日間 1.25/hr、夜間 0.375/hr 實際衰退率與 TimeEngine 交點精確模擬）：** 若玩家連續 10 日每日僅於 08:00 餵 3 糧 \+ 3 水但不互動（因 Hunger 與 Hydration 日衰退均為 73.6，3 糧 \+ 3 水使兩者每日照護後均達 100.0、次日照護前均為 26.4，全程嚴格維持 \>= 20，**完全隔離飢餓與缺水對 Health 及 Mood 的干擾**；每日 08:00 瞬間增加 Mood \+12，隨後 24 小時基礎衰退 Mood \-23，各日 08:00 照護後 Mood 依序為 Day 1: 97、Day 2: 86、Day 3: 75、Day 4: 64、Day 5: 53、Day 6: 42、Day 7: 31、Day 8: 20、Day 9: 12、Day 10: 12；不可僅用每日平均衰退量推算，須以 Game Core TimeEngine 實際模擬結果為最終驗收依據）：  
+      \- **長期僅於 08:00 餵食飲水但不陪伴情境驗證（隔離飢餓與缺水懲罰，依日間 1.25/hr、夜間 0.375/hr 實際衰退率與 TimeEngine 交點精確模擬）：** 若玩家連續 10 日每日僅於 08:00 餵 3 糧 \+ 3 水但不互動（因 Hunger 與 Hydration 日衰退均為 73.6，3 糧 \+ 3 水使兩者每日照護後均達 100.0、次日照護前均為 26.4，全程嚴格維持 \>= 20，**完全隔離飢餓與缺水對 Health 及 Mood 的干擾**；每日 08:00 瞬間增加 Mood \+12，隨後 24 小時基礎衰退 Mood \-23，各日 08:00 照護後 Mood 依序為 Day 1: 97、Day 2: 86、Day 3: 75、Day 4: 64、Day 5: 53、Day 6: 42、Day 7: 31、Day 8: 20、Day 9: 12、Day 10: 12；不可僅用每日平均衰退量推算，須以 Game Core TimeEngine 實際模擬結果為最終驗收依據）：  
       1\. **階段 1（無扣血期，Day 1 08:00 \~ Day 9.067）：** Day 5 晚間雖曾短暫跌破 40，但 Day 6 08:00 照護後 Mood 拉回 42（重置 below40Hours \= 0），隨後依日間衰退率 1.25/hr 經 1.6 小時於 **Day 6.067**（Day 6 09:36）再次跌破 40（開始連續累計 below40Hours）；雖於 Day 6 末段短暫跌破 20，但 **Day 7 08:00** 的餵食飲水脈衝將 Mood 拉回 31，使 below20Hours 立即歸零重置（below40Hours 則持續累計）；直到 **Day 8 08:00** 脈衝後 Mood \= 20（重置 below20Hours \= 0）隨即再次跌破 20，才開始連續累計 below20Hours。在 below40Hours 未滿 72h 前全程零扣血。  
       2\. **階段 2（一般低落扣血期，Day 9.067 \~ Day 10.000）：** 當 **Day 9.067**（Day 9 09:36）below40Hours 滿 72.0 小時但 below20Hours 尚未滿 48.0 小時之區間（共 **22.4 小時**），啟動 **\-0.05/hr** 緩慢扣血（此階段累計扣除 **1.12** 點 Health）。  
       3\. **階段 3（嚴重低落扣血期與 40 安全地板，Day 10.000 起）：** 當 **Day 10.000**（Day 10 08:00 結算交點）below20Hours 滿 48.0 小時起，扣血速率切換為 **\-0.1/hr**（每日 \-2.4 點 Health，取代 \-0.05/hr 不疊加），且受 Health \>= 40 安全地板保護（絕不會因不陪伴而進入 CRITICAL 或死亡），玩家回來陪伴玩耍與使用商品即可輕鬆回滿。  
-   3. **情境 C（每 3 日於 08:00 登入 1 次，救援與分級恢復兩階段驗收 — 方案 A 持續照護劇本）：** 登入時貓咪處於 Hunger \= 0, Hydration \= 0, Mood \= 0, Health \= 10, recoveryState \= "CRITICAL"。玩家於 08:00 連續執行救援照護（3 免費乾糧 \+ 3 免費飲水 \+ 2 凍乾原肉丁零食 \+ 10 次陪伴互動），照護後立即為 Hunger \= 0 \+ (3×25) \+ (2×8) \= 91 (\>= 60)、Hydration \= 0 \- (3×2) \+ (3×32) \- (2×1，含 2 份凍乾零食扣水) \= 88 (\>= 60)、Mood \= 0 \+ (3×2) \+ (3×2) \+ (2×14) \+ (10×3) \= 70 (\>= 70)。**階段 1（2 小時急速脫險）：** 經過 2 小時（08:00 \~ 10:00）RECOVERY\_BOOST (+10.0/hr)，Health 從 10 恢復至 30.0（此時耗盡 2 小時 Boost 額度並精確於 10:00 交點轉為 NATURAL\_RECOVERY）。**階段 2（持續日常照護穩健回滿）：** 轉入 NATURAL\_RECOVERY 後，玩家在後續恢復期間維持每日 08:00 與 20:00 早晚各餵 2 糧 \+ 2 水 \+ 2 互動之日常照護（確保恢復期間 Hunger \>= 60 && Hydration \>= 60 持續滿足，其中 Mood \>= 70 時以 \+2.5/hr 回血、Mood 40\~69 時以 \+1.25/hr 回血），驗證在累計有效恢復時數達標後 Health 穩定回滿至 100 並自動重置為 NORMAL。
+   3. **情境 C（每 3 日於 08:00 登入 1 次，救援與分級恢復兩階段驗收 — 方案 A 持續照護劇本）：** 登入時貓咪處於 Hunger \= 0, Hydration \= 0, Mood \= 0, Health \= 10, recoveryState \= "CRITICAL"。玩家於 Day 1 08:00 連續執行初始救援照護（3 免費乾糧 \+ 3 免費飲水 \+ 2 凍乾原肉丁零食 \+ 10 次陪伴互動），照護後立即為 Hunger \= 0 \+ (3×25) \+ (2×8) \= 91 (\>= 60)、Hydration \= 0 \- (3×2) \+ (3×32) \- (2×1，含 2 份凍乾零食扣水) \= 88 (\>= 60)、Mood \= 0 \+ (3×2) \+ (3×2) \+ (2×14) \+ (10×3) \= 70 (\>= 70)。  
+      \- **階段 1（2 小時急速脫險）：** 經過 2 小時（Day 1 08:00 \~ 10:00）RECOVERY\_BOOST (+10.0/hr)，Health 從 10 恢復至 30.0（此時耗盡 2.0h Boost 額度並精確於 10:00 交點轉為 NATURAL\_RECOVERY）。  
+      \- **階段 2（每日早晚照護期間之需求門檻與自然回血暫停規則）：** 轉入 NATURAL\_RECOVERY 後，恢復期間每日固定於 08:00 與 20:00 各執行 2 糧 \+ 2 水 \+ 2 次互動照護（單次補充 Hunger \+50、Hydration \+60、Mood \+14）。每次照護後，必須依 TimeEngine 實際計算 Hunger、Hydration 與 Mood，並依 RecoveryState 規則判斷是否可以回血；**不得假設每日早晚照護即可使 Hunger / Hydration 全程維持在 60 以上**（例如 08:00 照護達 100 後，日間每小時衰退 4.0，至 18:00 降至 60、18:00 \~ 20:00 低於 60）。當 Hunger \< 60 或 Hydration \< 60 時，若處於 NATURAL\_RECOVERY，必須暫停 Health 回復；當兩項需求均恢復至 60 以上時，立即依當下 Mood 區間恢復回血。  
+      \- **完整 24 小時（含夜間）Recovery 計算要求：**  
+        1\. 每次照護後，TimeEngine 必須依照日夜時段切割，逐段計算需求衰退、Mood 變化及 Health Recovery。  
+        2\. Hunger \< 60 或 Hydration \< 60 時，暫停 NATURAL\_RECOVERY；當兩者均恢復至 60 以上時，立即依當下 Mood 區間恢復回血。  
+        3\. **夜間 23:00 \~ 07:00 不得因為是夜間而自動暫停 Recovery。** 只要 Hunger、Hydration 符合門檻，且 RecoveryState 允許回血，就必須依當下 Mood 區間持續恢復。  
+        4\. 每次 08:00 與 20:00 照護指令必須先完成此前時間區間的模擬，再依序執行 FeedPet ➔ DrinkWater ➔ PetCat/PlayWithPet。  
+        5\. Health 達到 100 時，立即 Clamp 為 100，RecoveryState 重置為 NORMAL，recoveryBoostAccumulatedHours 歸零。  
+        6\. 測試輸出必須完整記錄：(a) 每日 08:00、20:00 照護前後的 Hunger、Hydration、Mood、Health；(b) 每個日夜區段的起訖時間、各數值、RecoveryState、實際回血時數及回血量；(c) 每日 Hunger \< 60 或 Hydration \< 60 的起訖時間及累積暫停時數；(d) RecoveryState 每次轉換的精確時間；(e) Health 首次達到 100 的精確日期與時間（若未於預期時間內達到 Health 100，必須列出原因，不得以理論回血量或忽略夜間恢復的手算結果取代實際模擬）。  
+      \- **逐段實際模擬參考時間表（最終驗收以 Game Core TimeEngine 實際執行輸出為準）：**  
+        \- **Day 1 08:00 \~ 10:00（2.0h，日間）：** RECOVERY\_BOOST (+10.0/hr) 回血 \+20.0 ➔ Health \= 30.0（10:00 轉入 NATURAL\_RECOVERY；結束時 Hunger 83、Hydration 80、Mood 67.5）。  
+        \- **Day 1 10:00 \~ 15:00（5.0h，日間）：** 需求均 \>= 60、Mood 40\~69 (+1.25/hr) 回血 \+6.25 ➔ Health \= 36.25（15:00 時 Hydration 降至 60）。  
+        \- **Day 1 15:00 \~ 20:00（5.0h，日間）：** Hydration \< 60，**NATURAL\_RECOVERY 暫停 5.0h**（結束時 Hunger 43、Hydration 40、Mood 55.0、Health \= 36.25）。  
+        \- **Day 1 20:00 照護後：** Hunger \= 93、Hydration \= 100、Mood \= 69.0、Health \= 36.25。  
+        \- **Day 1 20:00 \~ 23:00（3.0h，日間）：** 需求均 \>= 60、Mood 40\~69 (+1.25/hr) 回血 \+3.75 ➔ Health \= 40.0（結束時 Hunger 81、Hydration 88、Mood 65.25）。  
+        \- **Day 1 23:00 \~ Day 2 07:00（8.0h，夜間持續回血）：** 需求均 \>= 60、Mood 40\~69 (+1.25/hr) 回血 \+10.0 ➔ Health \= 50.0（結束時 Hunger 71.4、Hydration 78.4、Mood 62.25）。  
+        \- **Day 2 07:00 \~ 08:00（1.0h，日間）：** 需求均 \>= 60、Mood 40\~69 (+1.25/hr) 回血 \+1.25 ➔ Health \= 51.25（照護前 Hunger 67.4、Hydration 74.4、Mood 61.0）。  
+        \- **Day 2 08:00 照護後：** Hunger \= 100、Hydration \= 100、Mood \= 75.0、Health \= 51.25。  
+        \- **Day 2 08:00 \~ 12:00（4.0h，日間）：** 需求均 \>= 60、Mood \>= 70 (+2.5/hr) 回血 \+10.0 ➔ Health \= 61.25（12:00 時 Mood 降至 70.0）。  
+        \- **Day 2 12:00 \~ 18:00（6.0h，日間）：** 需求均 \>= 60、Mood 40\~69 (+1.25/hr) 回血 \+7.5 ➔ Health \= 68.75（18:00 時 Hunger/Hydration 均降至 60.0）。  
+        \- **Day 2 18:00 \~ 20:00（2.0h，日間）：** Hunger/Hydration \< 60，**NATURAL\_RECOVERY 暫停 2.0h**（結束時 Hunger 52、Hydration 52、Mood 60.0、Health \= 68.75）。  
+        \- **Day 2 20:00 照護後：** Hunger \= 100、Hydration \= 100、Mood \= 74.0、Health \= 68.75。  
+        \- **Day 2 20:00 \~ 23:00（3.0h，日間）：** 需求均 \>= 60、Mood \>= 70 (+2.5/hr) 回血 \+7.5 ➔ Health \= 76.25（結束時 Hunger 88、Hydration 88、Mood 70.25）。  
+        \- **Day 2 23:00 \~ 23:40（2/3 h，夜間持續回血）：** 需求均 \>= 60、Mood \>= 70 (+2.5/hr) 回血 \+1.6667 ➔ Health ≈ 77.9167（23:40 時 Mood 降至 70.0）。  
+        \- **Day 2 23:40 \~ Day 3 07:00（22/3 h，夜間持續回血）：** 需求均 \>= 60、Mood 40\~69 (+1.25/hr) 回血 \+9.1667 ➔ Health ≈ 87.0833（結束時 Hunger 78.4、Hydration 78.4、Mood 67.25）。  
+        \- **Day 3 07:00 \~ 08:00（1.0h，日間）：** 需求均 \>= 60、Mood 40\~69 (+1.25/hr) 回血 \+1.25 ➔ Health ≈ 88.3333（照護前 Hunger 74.4、Hydration 74.4、Mood 66.0）。  
+        \- **Day 3 08:00 照護後：** Hunger \= 100、Hydration \= 100、Mood \= 80.0、Health ≈ 88.3333。  
+        \- **Day 3 08:00 \~ 12:40（14/3 h，日間）：** 需求均 \>= 60、Mood \>= 70 (+2.5/hr) 回血 \+11.6667 ➔ 於 **Day 3 12:40** 精確達成 **Health \= 100.0**（此時 Hunger ≈ 81.33、Hydration ≈ 81.33、Mood ≈ 74.17），立即 Clamp 為 100 並重置為 RecoveryState \= "NORMAL"、recoveryBoostAccumulatedHours \= 0。
 
 # **9\. 產品範圍與非目標 (Scope & Non-Goals)**
 
