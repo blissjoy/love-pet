@@ -1,6 +1,6 @@
-# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.12)**
+# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.13)**
 
-**【版本資訊】** Master PRD v2.1.12（2026-11-19 定稿）｜修訂重點：移除 8.C.1 開頭重複出現之【指令與時間模擬執行順序 (P1-4)】定義；於 8.C.1 交點有效性與零時間事件過濾規則中集中定義 VALUE\_EPSILON \= 1e-9 與 TIME\_EPSILON\_MS \= 1e-3（1 微秒）統一容差常數；保留所有已確認核心數值、每日 3 糧 \+ 4 水 \+ 3 互動標準方案與 TC-09 B/C 基準不變。
+**【版本資訊】** Master PRD v2.1.13（2026-11-19 定稿）｜修訂重點：修正第 1 節產品概述與 MVP 範圍一致性（MVP 階段連動手機時間與電量等環境資訊，計步器與戶外散步明確歸屬 Phase E，呼應第 7 節與第 10.1 節）；釐清 8.C.1 步驟 4（飢餓/缺水 \< 20 扣血 \-2.0/hr、最低保護下限 10）與步驟 4.5（獨立低心情扣減 MoodHealthPenalty、最低保護地板 40）之執行順序與各自獨立保護下限；保留所有已確認核心數值與 TC-09 B/C 基準不變。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -42,11 +42,11 @@
 本產品不設寵物死亡機制、不因玩家長期未開啟 App 而永久失去寵物、不設不可逆的健康傷害。健康值設有保護下限（最低降至 10），任何低健康狀態皆可透過免費基礎照護或救援模式恢復，並提供無懲罰的「照護暫停模式 (Care Pause)」。  
 **【寫給首次閱讀本企劃的人：我們解決了什麼問題？】**
 
-* **對一般大眾 (User)：** 解決了「想養寵物但環境不允許」或「渴望日常陪伴」的痛點。這不是一款需要死板打卡的手遊，而是透過連動手機真實的電量、時間與計步器，讓你感覺手機裡真的住著一隻有情緒的貓咪。  
+* **對一般大眾 (User)：** 解決了「想養寵物但環境不允許」或「渴望日常陪伴」的痛點。這不是一款需要死板打卡的手遊，而是透過連動手機真實的時間與電量等環境資訊（MVP 階段先提供時間與電量情境；計步器與戶外散步列為 Phase E 後續擴充，MVP 階段不申請計步器權限），讓你感覺手機裡真的住著一隻有情緒的貓咪。  
 * **對贊助廠商 (Brand)：** 解決了「寵物廣告轉換率低、惹人厭」的痛點。我們將真實的貓砂、主食罐置入遊戲商店中，玩家在選購飼料時自然閱讀真實成分與營養介紹，廠商付費取得「被精準受眾看見的機會」，實現零反感的**內容型原生廣告 (Native Advertising)** 與導購平台 (B2B2C)。
 
 **【技術與發展藍圖】**  
-採用「平台解耦」與「離線優先」架構，以純 TypeScript 打造跨平台遊戲核心（Game Core），先於 Windows 本機完成核心規則驗證與自動化測試，再分別透過原生適配器（Adapter）落地於 Android 全域懸浮窗與 iOS 桌面 Widget / App 內互動。初期依賴 2D 肢體動畫與腳本狀態機以零伺服器成本驗證市場；專案的終極目標，是在商業模式與核心玩法驗證成功後，於未來階段接入 LLM（大型語言模型）賦賦予貓咪深度對話能力（LLM 僅負責語言與情境表達，絕不直接修改核心數值或跳過 Game Core 規則）。
+採用「平台解耦」與「離線優先」架構，以純 TypeScript 打造跨平台遊戲核心（Game Core），先於 Windows 本機完成核心規則驗證與自動化測試，再分別透過原生適配器（Adapter）落地於 Android 全域懸浮窗與 iOS 桌面 Widget / App 內互動。初期依賴 2D 肢體動畫與腳本狀態機以零伺服器成本驗證市場；專案的終極目標，是在商業模式與核心玩法驗證成功後，於未來階段接入 LLM（大型語言模型）賦予貓咪深度對話能力（LLM 僅負責語言與情境表達，絕不直接修改核心數值或跳過 Game Core 規則）。
 
 # **2\. 商業模式深度解析 (內容型原生廣告與 O2O 導購)**
 
@@ -343,14 +343,13 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 3. **步驟 3（更新 mood 與低需求額外懲罰 \- P0-1）：**  
    1. 基礎心情扣除 **1.25 \* periodFactor \* actualHours**（日間每小時 \-1.25，夜間每小時 \-0.375；每日 24 小時基礎心情總衰退為 23.0）。  
    2. 若步驟 2 更新後之 hunger \< 20 或 hydration \< 20，額外心情懲罰亦乘以時段係數，扣除 1.5 \* periodFactor \* actualHours（最低 0）。  
-4. **步驟 4（更新 health 連鎖扣減）：**  
-5. **步驟 4.5（獨立低心情健康懲罰 MoodHealthPenalty — C. 混合模式）：**  
+4. **步驟 4（更新 health 連鎖扣減 — 飢餓/缺水扣血，最低保護下限 10）：** 若步驟 2 更新後之 hunger \< 20 或 hydration \< 20，扣除 health 2.0 \* actualHours（不受夜間係數減免，最低保護下限為 10）。  
+5. **步驟 4.5（獨立低心情健康懲罰 MoodHealthPenalty — C. 混合模式，最低保護地板 40）：** 短期缺少陪伴僅降低 Mood，不影響 Health；唯有連續低心情達標才啟動極緩慢扣血，且與步驟 4 的飢餓/缺水扣血完全獨立計算，並各自套用各自的保護下限（步驟 4 飢餓/缺水扣血最低可降至 10；步驟 4.5 低心情扣血最低僅能降至 40）：  
    1. 短期缺少陪伴僅降低 Mood，不影響 Health；唯有連續低心情達標才啟動極緩慢扣血，且與飢餓/缺水扣血完全獨立：  
       1. 1\. Mood \>= 40：健康無影響，立即重置 below40Hours \= 0 與 below20Hours \= 0。  
       2. 2\. Mood 20 \~ 39：累加 below40Hours \+= actualHours（同時重置 below20Hours \= 0）；當 below40Hours \> 72.0 時，超出 72.0 小時的部分每小時扣除 Health \-0.05（不受夜間係數減免）。  
       3. 3\. Mood 0 \~ 19：同時累加 below40Hours \+= actualHours 與 below20Hours \+= actualHours；當 below20Hours \> 48.0 時，超出 48.0 小時的部分每小時扣除 Health \-0.1（不與 \-0.05 疊加，採較高之 \-0.1/hr）。  
       4. **4\. 安全地板保護 (Health Floor \= 40)：** MoodHealthPenalty 最低只能將 Health 扣減至 40；若 Health \<= 40，MoodHealthPenalty 扣減量強制為 0（絕不因低心情而將寵物推入 CRITICAL \< 40 或死亡）。  
-   2. 若步驟 2 更新後之 hunger \< 20 或 hydration \< 20，扣除 health 2.0 \* actualHours（不受夜間係數減免，最低保護下限為 10）。  
 6. **步驟 5（執行健康救援狀態機 Recovery State Machine \- P0-2, P0-4, P1-6）：**  
    1. **1\. NORMAL ➔ CRITICAL：** 當 health \< 40 時觸發一次轉換，僅在此轉換瞬間執行 recoveryBoostAccumulatedHours \= 0。  
    2. **2\. CRITICAL ➔ RECOVERY\_BOOST：** 處於 CRITICAL 狀態下，當滿足 hunger \>= 50 && hydration \>= 50 且 recoveryBoostAccumulatedHours \< 2.0 時轉入，每小時恢復 \+10.0 health（按 actualHours 計算），並累加 recoveryBoostAccumulatedHours \+= actualHours（上限 2.0）。  
@@ -404,7 +403,7 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 3. **Phase C (手機端 SQLite)：**  
    1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.12 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
-4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。
+4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.13 未變更）
 
 ### **8.E.2 核心自動化驗收測試案例 (Vitest Acceptance Criteria)**
 
