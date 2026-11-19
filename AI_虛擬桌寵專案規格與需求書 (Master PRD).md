@@ -1,6 +1,6 @@
-# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.6)**
+# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.7)**
 
-**【版本資訊】** Master PRD v2.1.6（2026-11-19 定稿）｜修訂重點：修正 TC-09 B 長期不陪伴（每日 08:00 脈衝餵水）之精確時間引擎交點軌跡（Day 6.087 跌破 40、Day 7 08:00 脈衝拉回 31 重置 below20Hours、Day 9.087 啟動 \-0.05/hr、Day 10.000 切換 \-0.1/hr）；統一 Priority 90 負面冷卻（15,000 ms）同時限制 PetCat 與 PlayWithPet（方案 B）；更新 Save Schema v2 版本註記。
+**【版本資訊】** Master PRD v2.1.7（2026-11-19 定稿）｜修訂重點：確立每日一次登入標準免費照護方案 B（3 份免費乾糧 \+ 4 份免費飲水 \+ 3 次互動）並新增免費照護長期健康原則；新增 TC-09 B 連續 60 日模擬驗收（含每日照護前後數值與 0\~100 上下限截斷驗證）；修正 TC-09 B 長期不陪伴 Mood 交點與扣血計算（Day 6.067 跌破 40、Day 9.067 滿 72h、第二階段 22.4h 扣減 1.12 Health）；於 TC-05 補齊 PlayWithPet 15 秒冷卻完整測試情境。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -54,7 +54,7 @@
 
 ## **2.1 無反感原生廣告的五大核心原則**
 
-1. **商品是選擇，不是強迫（免費照護保障）：** 玩家可自由使用基礎免費食物與飲水，足以持續維持貓咪健康與基本需求，絕不會因為沒買合作品牌商品而導致貓咪生病或受到不可逆懲罰。  
+1. **商品是選擇，不是強迫（免費照護保障）：** 玩家可自由使用基礎免費食物與飲水，足以持續維持貓咪健康與基本需求，絕不會因為沒買合作品牌商品而導致貓咪生病或受到不可逆懲罰。每日一次登入的標準免費照護量（3 份免費乾糧 \+ 4 份免費飲水 \+ 3 次互動），必須足以讓寵物在長期正常照護情境下維持基本健康，不得要求玩家透過付費商品、觀看廣告或提高登入頻率，才能避免寵物健康持續惡化。  
 2. **廣告與一般商品並存：** 商店內同時提供一般遊戲道具與合作廠商商品，合作商品清楚標示「品牌合作 / 贊助內容」，維持畫面清爽。  
 3. **商品介紹具備真實知識價值：** 點進飼料可查看真實品牌、原料成分、蛋白質/脂肪/水分營養分析、適用對象、資料來源及資料更新日期；MVP 階段之模擬商品須於 UI 明確標示「測試商品/模擬資料」。  
 4. **品牌公平與平衡原則：** 品牌合作商品不得因贊助關係取得額外數值加成。所有商品的遊戲回復效果均依固定的遊戲平衡公式配置（例如主食罐補水高、乾糧飽食高、零食心情高），廠商購買的是「品牌曝光與虛擬櫃位」，贊助費不得直接影響商品數值。  
@@ -402,7 +402,7 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.6 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.7 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
 4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。
 
@@ -414,16 +414,21 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
 2. **TC-02（特殊骨架雙親與跨品種統計分布）：** 使用獨立固定種子序列 seed\_0001 \~ seed\_1000（每次獨立初始化 PRNG 確保狀態隔離）：munchkin \+ maine\_coon 驗證 short\_legs 佔 50% ± 5%、giant\_fluffy 佔 25% ± 5%、normal 佔 25% ± 5%（允許 short\_legs 與 giant\_fluffy 共存）；munchkin \+ munchkin 驗證 short\_legs 佔 75% ± 5%、normal 佔 25% ± 5%；exotic \+ domestic 驗證 flat\_face 佔 45% ± 5%、standard\_round 佔 55% ± 5%；exotic \+ exotic 驗證 flat\_face 佔 80% ± 5%、standard\_round 佔 20% ± 5%。  
 3. **TC-03（時間步進、日夜邊界切割與分段一致性）：** 測試 22:50 \~ 23:05 跨夜邊界自動拆分為 10 分鐘日間（1.0）+ 5 分鐘夜間（0.3）之精確結算驗證；06:45 \~ 07:15 跨日、未滿 15 分鐘零頭累計、24 小時一次補算與 4 次 × 6 小時分段補算結果誤差 \< 1e-9，以及時鐘回撥後恢復正常時間的補算正確性。  
 4. **TC-04（健康救援狀態機完整邊界）：** 驗證 health \= 40 不進 CRITICAL、health \= 39 進入 CRITICAL（僅轉換時重置累計時數）；餵食補水達 50/50 進入 RECOVERY\_BOOST（按 actualHours 計算）；中途飢餓跌至 49 暫停並保留已累計時數，重新餵食後繼續累計；當 recoveryBoostAccumulatedHours \>= 2.0 用滿後，即使 health \= 30（仍 \< 40）且未達 60/60/70 亦正確轉為 NATURAL\_RECOVERY 等待照護，絕不卡死或重置累計時數；單步跨越 40 與上限 100 Clamp 驗證。  
-5. **TC-05（行為仲裁、滑動窗口與冷卻邊界）：** 驗證 Priority 100 \> 90 \> 80 \> 60 \> 40 \> 10；同觸發 Priority 100 多項條件時 iconIds 合併且主動畫依固定序執行；POKE 10 秒滑動窗口第 4 次觸發 Priority 90，15 秒冷卻期間再 Poke 不延長冷卻且餵食仍有效；eat 跨過 23:00 不被睡眠中斷。  
+5. **TC-05（行為仲裁、滑動窗口與冷卻邊界）：** 驗證 Priority 100 \> 90 \> 80 \> 60 \> 40 \> 10；同觸發 Priority 100 多項條件時 iconIds 合併且主動畫依固定序執行；POKE 10 秒滑動窗口第 4 次觸發 Priority 90，eat 跨過 23:00 不被睡眠中斷。另須完整驗證 Priority 90 結束後 15 秒互動冷卻（冷卻期間再 Poke 不延長冷卻）：(1) 15 秒內 PetCat 可播放動畫但不增加 Mood / 積分；(2) 15 秒內 PlayWithPet 可播放動畫但不增加 Mood / 積分；(3) 冷卻結束後 PetCat 恢復正常獎勵；(4) 冷卻結束後 PlayWithPet 恢復正常獎勵；(5) 冷卻期間 FeedPet 不受互動冷卻限制，照常生效。  
 6. **TC-06（傲嬌干預與記憶計算）：** tsundere \>= 70 餵免費乾糧依機率觸發撇頭再吃；驗證最近 7 天互動佔 70% 與歷史 30% 的人格計算公式。  
 7. **TC-07（商品探索防重與跨日重置）：** 開局 200 積分，同商品同日重複開啟不給分、跨午夜（23:59 ➔ 00:01）正確重置上限、單日探索上限 30 積分、購買與背包使用扣減及 100 上限 Clamp。  
 8. **TC-08（365 天長時穩定性模擬）：** 連續模擬 365 天隨機玩家行為（含 Care Pause 開關、長期未登入、只用免費糧水），驗證無 NaN、Infinity 或負數積分，且存檔序列化與還原一致。  
 9. **TC-09（每日照護負擔量化驗收標準 — 固定照護時間與執行順序）：** 測試起點統一設為 Day 1 08:00，初始數值 hunger \= 80, hydration \= 80, mood \= 85, health \= 100，僅使用免費乾糧（+25 hunger, \-2 hydration, \+2 mood）、免費飲水（+32 hydration, \+2 mood）與每日摸頭/玩耍（mood \+3）。每次登入照護指令於該時間點一次連續執行（執行順序：FeedPet ➔ DrinkWater ➔ PetCat/PlayWithPet），每日以次日 08:00 作為完整 24 小時日結點：  
    1. **情境 A（每日早晚 08:00 與 20:00 登入 2 次，每次餵 2 糧 \+ 2 水 \+ 2 次互動）：** 每日總補充 Hunger \+100、Hydration \+120、Mood \+28，每日 08:00 日結時 Hunger \>= 80、Hydration \>= 85、Mood \>= 85，Health 維持 100（零扣血）。  
-   2. **情境 B（每日僅 08:00 登入 1 次，餵 3 糧 \+ 3 水 \+ 3 次互動 — 驗證低壓力陪伴）：** 每日補充 Hunger \+75（日衰退 73.6）、Hydration \+90（日衰退 92.0）、Mood \+21（日衰退 23.0）。連續模擬 7 日（至 Day 8 08:00）：第 7 日結束時 Hunger \= 89.8、Hydration \= 66.0、Mood \= 71.0，全程未觸發低需求或低心情扣血，Health 始終維持 100。  
-      \- **長期僅於 08:00 餵食飲水但不陪伴情境驗證（按 08:00 脈衝照護與時間引擎交點精確模擬）：** 若玩家連續 10 日每日僅於 08:00 餵 3 糧 \+ 3 水但不互動（每日 08:00 瞬間增加 Mood \+12，隨後 24 小時衰退 Mood \-23，各日 08:00 照護後 Mood 依序為 Day 1: 97、Day 2: 86、Day 3: 75、Day 4: 64、Day 5: 53、Day 6: 42、Day 7: 31、Day 8: 20、Day 9: 12、Day 10: 12）：  
-      1\. **階段 1（無扣血期，Day 1 08:00 \~ Day 9.087）：** 直到 **Day 6.087** Mood 才首次跌破 40（開始累計 below40Hours）；雖於 Day 6 末段短暫跌破 20，但 **Day 7 08:00** 的餵食飲水脈衝將 Mood 拉回 31，使 below20Hours 立即歸零重置（below40Hours 則持續累計）；直到 **Day 8 08:00** 脈衝後 Mood \= 20 隨即再次跌破 20，才開始連續累計 below20Hours。在 below40Hours 未滿 72h 前全程零扣血。  
-      2\. **階段 2（一般低落扣血期，Day 9.087 \~ Day 10.000）：** 當 **Day 9.087** below40Hours 滿 72.0 小時但 below20Hours 尚未滿 48.0 小時之區間（共 21.91 小時），啟動 **\-0.05/hr** 緩慢扣血（此階段累計扣除約 1.10 點 Health）。  
+   2. **情境 B（每日僅 08:00 登入 1 次，標準免費照護方案 B：3 糧 \+ 4 水 \+ 3 次互動 — 驗證低壓力長期陪伴）：** 每日 08:00 依序執行 3 份免費乾糧（+75 Hunger, \-6 Hydration, \+6 Mood）➔ 4 份免費飲水（+128 Hydration, \+8 Mood）➔ 3 次撫摸/玩耍互動（+9 Mood），每日總補充量為 Hunger \+75（日衰退 73.6，淨變化 \+1.4）、Hydration \+122（日衰退 92.0，淨變化 \+30.0）、Mood \+23（日衰退 23.0，淨變化 0）（實際狀態須嚴格套用 0\~100 上下限截斷 Clamp，不得僅以淨變化推算）。  
+      \- **連續 60 日長期模擬驗收要求（須以 Game Core TimeEngine 實際跑完並輸出每日 08:00 照護前後之 Hunger、Hydration、Mood、Health、RecoveryState、below40Hours、below20Hours）：**  
+      1\. Hunger 與 Hydration 不會因每日基本照護而持續跌入危險區。  
+      2\. 不會因為每日一次登入而持續累積 Health penalty。  
+      3\. 不會因為缺乏額外付費商品而進入不可恢復的狀態。  
+      4\. 須同時檢核每日 08:00「照護前」與「照護後」之數值（不能只看日結數值），驗證照護量、日夜衰退與數值上限 100 截斷（Clamp）之實際交互作用。  
+      \- **長期僅於 08:00 餵食飲水但不陪伴情境驗證（依日間 1.25/hr、夜間 0.375/hr 實際衰退率與 TimeEngine 交點精確模擬）：** 若玩家連續 10 日每日僅於 08:00 餵 3 糧 \+ 3 水但不互動（每日 08:00 瞬間增加 Mood \+12，隨後 24 小時衰退 Mood \-23，各日 08:00 照護後 Mood 依序為 Day 1: 97、Day 2: 86、Day 3: 75、Day 4: 64、Day 5: 53、Day 6: 42、Day 7: 31、Day 8: 20、Day 9: 12、Day 10: 12；不可僅用每日平均衰退量推算，須以 Game Core TimeEngine 實際模擬結果為最終驗收依據）：  
+      1\. **階段 1（無扣血期，Day 1 08:00 \~ Day 9.067）：** Day 6 08:00 照護後 Mood \= 42，依日間衰退率 1.25/hr 經 1.6 小時於 **Day 6.067**（Day 6 09:36）首次跌破 40（開始累計 below40Hours）；雖於 Day 6 末段短暫跌破 20，但 **Day 7 08:00** 的餵食飲水脈衝將 Mood 拉回 31，使 below20Hours 立即歸零重置（below40Hours 則持續累計）；直到 **Day 8 08:00** 脈衝後 Mood \= 20 隨即再次跌破 20，才開始連續累計 below20Hours。在 below40Hours 未滿 72h 前全程零扣血。  
+      2\. **階段 2（一般低落扣血期，Day 9.067 \~ Day 10.000）：** 當 **Day 9.067**（Day 9 09:36）below40Hours 滿 72.0 小時但 below20Hours 尚未滿 48.0 小時之區間（共 **22.4 小時**），啟動 **\-0.05/hr** 緩慢扣血（此階段累計扣除 **1.12** 點 Health）。  
       3\. **階段 3（嚴重低落扣血期與 40 安全地板，Day 10.000 起）：** 當 **Day 10.000**（Day 10 08:00 結算交點）below20Hours 滿 48.0 小時起，扣血速率切換為 **\-0.1/hr**（每日 \-2.4 點 Health，取代 \-0.05/hr 不疊加），且受 Health \>= 40 安全地板保護（絕不會因不陪伴而進入 CRITICAL 或死亡），玩家回來陪伴玩耍與使用商品即可輕鬆回滿。  
    3. **情境 C（每 3 日於 08:00 登入 1 次，救援與分級恢復兩階段驗收 — 方案 A 持續照護劇本）：** 登入時貓咪處於 Hunger \= 0, Hydration \= 0, Mood \= 0, Health \= 10, recoveryState \= "CRITICAL"。玩家於 08:00 連續執行救援照護（3 免費乾糧 \+ 3 免費飲水 \+ 2 凍乾原肉丁零食 \+ 10 次陪伴互動），照護後立即為 Hunger \= 91 (\>= 60)、Hydration \= 88 (\>= 60)、Mood \= 70 (\>= 70)。**階段 1（2 小時急速脫險）：** 經過 2 小時（08:00 \~ 10:00）RECOVERY\_BOOST (+10.0/hr)，Health 從 10 恢復至 30.0（此時耗盡 2 小時 Boost 額度並精確於 10:00 交點轉為 NATURAL\_RECOVERY）。**階段 2（持續日常照護穩健回滿）：** 轉入 NATURAL\_RECOVERY 後，玩家在後續恢復期間維持每日 08:00 與 20:00 早晚各餵 2 糧 \+ 2 水 \+ 2 互動之日常照護（確保恢復期間 Hunger \>= 60 && Hydration \>= 60 持續滿足，其中 Mood \>= 70 時以 \+2.5/hr 回血、Mood 40\~69 時以 \+1.25/hr 回血），驗證在累計有效恢復時數達標後 Health 穩定回滿至 100 並自動重置為 NORMAL。
 
