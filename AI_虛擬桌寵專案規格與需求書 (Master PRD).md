@@ -1,6 +1,6 @@
-# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.11)**
+# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.12)**
 
-**【版本資訊】** Master PRD v2.1.11（2026-11-19 定稿）｜修訂重點：釐清 TC-09 情境 C 兩階段登入與照護時程（明確區分「連續 3 日未登入後之 Day 1 08:00 初始救援」與「自 Day 1 20:00 起每日早晚 08:00/20:00 持續恢復」）；於 8.C.1 Signed Rate Threshold Crossing 補齊零時間交點與重複事件過濾規則（currentValue 不得已等於 targetThreshold、t\_cross 嚴格大於 t\_start）；於 TC-09 C Day 1 時間表補入 15:45 Hunger 降至 60 之交點紀錄；保留所有已確認核心數值與 TC-09 B 基準不變。
+**【版本資訊】** Master PRD v2.1.12（2026-11-19 定稿）｜修訂重點：移除 8.C.1 開頭重複出現之【指令與時間模擬執行順序 (P1-4)】定義；於 8.C.1 交點有效性與零時間事件過濾規則中集中定義 VALUE\_EPSILON \= 1e-9 與 TIME\_EPSILON\_MS \= 1e-3（1 微秒）統一容差常數；保留所有已確認核心數值、每日 3 糧 \+ 4 水 \+ 3 互動標準方案與 TC-09 B/C 基準不變。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -327,12 +327,10 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 
 **【指令與時間模擬執行順序 (P1-4)】**  
 所有具有遊戲數值效果的 `GameCommand`（如 FeedPet、PetCat 等）在執行前，必須先呼叫 `TimeEngine.advanceTo(commandTimestamp)` 將遊戲狀態推進至該指令的有效時間點，再執行指令並套用數值變化。  
-**【指令與時間模擬執行順序 (P1-4)】**  
-所有具有遊戲數值效果的 `GameCommand`（如 FeedPet、PetCat 等）在執行前，必須先呼叫 `TimeEngine.advanceTo(commandTimestamp)` 將遊戲狀態推進至該指令的有效時間點，再執行指令並套用數值變化。  
 **【連續閾值交點切割與時間區段計算 (Threshold Crossing Split)】**  
 為徹底保證「一次補算 24 小時」與「任意時間點插入 GameCommand 分段補算」的浮點結果在數學上 100% 完全一致（誤差 \< 1e-9），TimeEngine 每次 advanceTo(now) 除按 0.25 小時（15 分鐘）基礎步長步進外，在推進時間區間 \[t\_start, t\_end\] 時，遇到以下任一狀態變化事件，必須建立精確交點切割 (Exact Boundary / Threshold Crossing Split)：  
 1\. 日夜時段邊界（每日 07:00 與 23:00）。  
-2\. 需求與健康狀態機門檻交點：Hunger \= 20、Hydration \= 20（扣血/額外懲罰門檻）、Hunger \= 50、Hydration \= 50（RECOVERY\_BOOST 門檻）、Hunger \= 60、Hydration \= 60、Mood \= 70（NATURAL\_RECOVERY 滿速門檻）、Mood \= 40（NATURAL\_RECOVERY 半速/低心情門檻）、Mood \= 20（嚴重低心情門檻）、Health \= 40（CRITICAL / 安全地板門檻）與 Health \= 100（滿血完成門檻）。**Signed Rate Threshold Crossing（帶正負號速率交點算式）：** 交點計算統一使用帶正負號的 ratePerHour（數值下降時 ratePerHour \< 0；數值上升時 ratePerHour \> 0；ratePerHour \= 0 時不存在由該區段速率產生的交點），交點時間戳公式為 t\_cross \= t\_start \+ ((targetThreshold \- currentValue) / ratePerHour) \* 3\_600\_000。只有當交點時間位於目前模擬區段內，且數值確實朝向該門檻移動時，才建立切割事件；當速率為 0、交點位於區段之外，或數值遠離門檻時，不得建立無效交點。所有交點仍須符合 TimeEngine 的精度要求，最終分段模擬結果誤差 \< 1e-9。**交點有效性與零時間事件過濾：** 建立 Threshold Crossing Event 時，除上述條件外，必須同時符合：(1) currentValue 不得已等於 targetThreshold（於浮點誤差 epsilon 範圍內視為相等）；(2) t\_cross 必須嚴格大於 t\_start 且小於或等於 t\_end（t\_start \< t\_cross \<= t\_end）；(3) 若計算結果與已處理事件時間相同，必須合併或忽略重複事件，不得重複建立零時間區段；(4) 交點處理完成後，必須立即更新目前數值與事件狀態，避免下一次迭代再次觸發相同交點。  
+2\. 需求與健康狀態機門檻交點：Hunger \= 20、Hydration \= 20（扣血/額外懲罰門檻）、Hunger \= 50、Hydration \= 50（RECOVERY\_BOOST 門檻）、Hunger \= 60、Hydration \= 60、Mood \= 70（NATURAL\_RECOVERY 滿速門檻）、Mood \= 40（NATURAL\_RECOVERY 半速/低心情門檻）、Mood \= 20（嚴重低心情門檻）、Health \= 40（CRITICAL / 安全地板門檻）與 Health \= 100（滿血完成門檻）。**Signed Rate Threshold Crossing（帶正負號速率交點算式）：** 交點計算統一使用帶正負號的 ratePerHour（數值下降時 ratePerHour \< 0；數值上升時 ratePerHour \> 0；ratePerHour \= 0 時不存在由該區段速率產生的交點），交點時間戳公式為 t\_cross \= t\_start \+ ((targetThreshold \- currentValue) / ratePerHour) \* 3\_600\_000。只有當交點時間位於目前模擬區段內，且數值確實朝向該門檻移動時，才建立切割事件；當速率為 0、交點位於區段之外，或數值遠離門檻時，不得建立無效交點。所有交點仍須符合 TimeEngine 的精度要求，最終分段模擬結果誤差 \< 1e-9。**交點有效性與零時間事件過濾：** 數值門檻比較與時間戳去重之容差常數必須集中定義於核心共用常數模組（如 packages/game-core 之 TIME\_ENGINE\_CONSTANTS），嚴禁各模組自行設定不同容差：數值門檻比較統一採用 VALUE\_EPSILON \= 1e-9，時間戳事件去重統一採用 TIME\_EPSILON\_MS \= 1e-3（1 微秒，大於 IEEE 754 雙精度浮點於 Unix ms 時間戳量級之機器誤差）。建立 Threshold Crossing Event 時，除上述條件外，必須同時符合：(1) Math.abs(currentValue \- targetThreshold) \> VALUE\_EPSILON（數值已在 VALUE\_EPSILON 範圍內等於門檻時不建立交點）；(2) t\_cross 必須嚴格大於 t\_start \+ TIME\_EPSILON\_MS 且小於或等於 t\_end（t\_start \+ TIME\_EPSILON\_MS \< t\_cross \<= t\_end）；(3) 若計算結果與已處理事件時間差小於或等於 TIME\_EPSILON\_MS（Math.abs(t\_cross \- t\_existing) \<= TIME\_EPSILON\_MS），必須合併或忽略重複事件，不得重複建立零時間區段；(4) 交點處理完成後，必須立即更新目前數值與事件狀態，避免下一次迭代再次觸發相同交點。  
 3\. 剩餘 Boost 額度耗盡時間點：t\_boost\_end \= t\_start \+ (2.0 \- recoveryBoostAccumulatedHours) \* 3\_600\_000。  
 4\. 低心情門檻與持續時間到期交點：Mood \= 40、Mood \= 20 穿越交點，以及 below40Hours 累計滿 72.0 小時、below20Hours 累計滿 48.0 小時的精確時間交點。  
 5\. 玩家數值 GameCommand 發生時間與 Care Pause 啟用/解除時間。  
@@ -404,7 +402,7 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.11 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.12 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
 4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。
 
@@ -447,7 +445,7 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
       \- **階段 2（自 Day 1 20:00 起之每日早晚持續恢復與自然回血暫停規則）：** 完成初始救援及 RECOVERY\_BOOST 後，自 Day 1 20:00 起進入持續恢復階段，每日固定於 08:00 與 20:00 各執行 2 份免費乾糧、2 份免費飲水及 2 次互動照護（單次補充 Hunger \+50、Hydration \+60、Mood \+14），直到 Health 達到 100。每次照護後，必須依 TimeEngine 實際計算 Hunger、Hydration 與 Mood，並依 RecoveryState 規則判斷是否可以回血；**不得假設每日早晚照護即可使 Hunger / Hydration 全程維持在 60 以上**（例如 08:00 照護達 100 後，日間每小時衰退 4.0，至 18:00 降至 60、18:00 \~ 20:00 低於 60）。當 Hunger \< 60 或 Hydration \< 60 時，若處於 NATURAL\_RECOVERY，必須暫停 Health 回復；當兩項需求均恢復至 60 以上時，立即依當下 Mood 區間恢復回血。  
       \- **完整 24 小時（含夜間）Recovery 計算要求：**  
         1\. 每次照護後，TimeEngine 必須依照日夜時段切割，逐段計算需求衰退、Mood 變化及 Health Recovery。  
-        2\. Hunger \< 60 或 Hydration \< 60 時，暫停 NATURAL\_RECOVERY；當兩者均恢復至 60 以上時，傳統依當下 Mood 區間恢復回血。  
+        2\. Hunger \< 60 或 Hydration \< 60 時，暫停 NATURAL\_RECOVERY；當兩者均恢復至 60 以上時，立即依當下 Mood 區間恢復回血。  
         3\. **夜間 23:00 \~ 07:00 不得因為是夜間而自動暫停 Recovery。** 只要 Hunger、Hydration 符合門檻，且 RecoveryState 允許回血，就必須依當下 Mood 區間持續恢復。  
         4\. 每次 08:00 與 20:00 照護指令必須先完成此前時間區間的模擬，再依序執行 FeedPet ➔ DrinkWater ➔ PetCat/PlayWithPet。  
         5\. Health 達到 100 時，立即 Clamp 為 100，RecoveryState 重置為 NORMAL，recoveryBoostAccumulatedHours 歸零。  
