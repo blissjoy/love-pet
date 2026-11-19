@@ -1,6 +1,6 @@
-# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.15)**
+# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.16)**
 
-**【版本資訊】** Master PRD v2.1.15（2026-11-19 定稿）｜修訂重點：依 PET-20 審查補強 8.E.3 TC-MH-05 測試初始資料與時間區間（明確指定 hunger \= 10、hydration \= 100 隔離單測飢餓扣血、明確說明由 below20Hours \= 48.0 門檻跨過後即 \> 48.0 啟動 \-0.1/hr，並補齊總推進 20.0 小時 之各階段時間與 health \= 10.0 下限斷言）；核心遊戲數值、每日 3 糧 \+ 4 水 \+ 3 互動方案與 TC-09 B/C 基準完全保留不變。
+**【版本資訊】** Master PRD v2.1.16（2026-11-19 定稿）｜修訂重點：依 PET-21 審查修正 8.C.1 步驟 4 與步驟 4.5 之 Health 扣血結算規則（將飢餓/缺水扣血與低心情扣血改為同一時間區段內之獨立速率，於 Health \> 40 時合併計算速率並精確切割 Health \= 40 交點；抵達 40 後 MoodHealthPenalty 立即歸 0，飢餓/缺水扣血繼續至保護下限 10，消除順序結算與 TC-MH-05 之矛盾）；完整保留 TC-MH-05、每日 3 糧 \+ 4 水 \+ 3 互動標準方案及所有既有 Recovery 公式與數值基準不變。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -343,13 +343,13 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 3. **步驟 3（更新 mood 與低需求額外懲罰 \- P0-1）：**  
    1. 基礎心情扣除 **1.25 \* periodFactor \* actualHours**（日間每小時 \-1.25，夜間每小時 \-0.375；每日 24 小時基礎心情總衰退為 23.0）。  
    2. 若步驟 2 更新後之 hunger \< 20 或 hydration \< 20，額外心情懲罰亦乘以時段係數，扣除 1.5 \* periodFactor \* actualHours（最低 0）。  
-4. **步驟 4（更新 health 連鎖扣減 — 飢餓/缺水扣血，最低保護下限 10）：** 若步驟 2 更新後之 hunger \< 20 或 hydration \< 20，扣除 health 2.0 \* actualHours（不受夜間係數減免，最低保護下限為 10）。  
-5. **步驟 4.5（獨立低心情健康懲罰 MoodHealthPenalty — C. 混合模式，最低保護地板 40）：** 短期缺少陪伴僅降低 Mood，不影響 Health；唯有連續低心情達標才啟動極緩慢扣血，且與步驟 4 的飢餓/缺水扣血完全獨立計算，並各自套用各自的保護下限（步驟 4 飢餓/缺水扣血最低可降至 10；步驟 4.5 低心情扣血最低僅能降至 40）：  
+4. **步驟 4（決定飢餓/缺水 Health 扣血速率 starvationHealthRate — 保護下限 10）：** 本步驟僅判定該時間區段內之飢餓/缺水扣血速率，**不得在步驟 4.5 判定前先行修改 health**：若該區段滿足 hunger \< 20 或 hydration \< 20（且 health \> 10），則 starvationHealthRate \= \-2.0/hr（不受夜間係數減免，最低保護下限為 10）；否則為 0/hr。  
+5. **步驟 4.5（決定獨立低心情健康懲罰速率 moodHealthRate 並與步驟 4 合併結算 — C. 混合模式，保護地板 40）：** 短期缺少陪伴僅降低 Mood，不影響 Health；唯有連續低心情達標才啟動極緩慢扣血，且與步驟 4 視為**同一時間區段內之獨立速率**合併結算，各自保留保護下限（飢餓/缺水最低 10；低心情最低 40）：  
    1. 短期缺少陪伴僅降低 Mood，不影響 Health；唯有連續低心情達標才啟動極緩慢扣血，且與飢餓/缺水扣血完全獨立：  
       1. 1\. Mood \>= 40：健康無影響，立即重置 below40Hours \= 0 與 below20Hours \= 0。  
       2. 2\. Mood 20 \~ 39：累加 below40Hours \+= actualHours（同時重置 below20Hours \= 0）；當 below40Hours \> 72.0 時，超出 72.0 小時的部分每小時扣除 Health \-0.05（不受夜間係數減免）。  
       3. 3\. Mood 0 \~ 19：同時累加 below40Hours \+= actualHours 與 below20Hours \+= actualHours；當 below20Hours \> 48.0 時，超出 48.0 小時的部分每小時扣除 Health \-0.1（不與 \-0.05 疊加，採較高之 \-0.1/hr）。  
-      4. **4\. 安全地板保護 (Health Floor \= 40)：** MoodHealthPenalty 最低只能將 Health 扣減至 40；若 Health \<= 40，MoodHealthPenalty 扣減量強制為 0（絕不因低心情而將寵物推入 CRITICAL \< 40 或死亡）。  
+      4. **4\. 合併速率結算與 Health \= 40 / Health \= 10 精確交點切割：** 當區段起點 **health \> 40** 時，該區段之 Health 總扣血速率為 **totalHealthPenaltyRate \= starvationHealthRate \+ moodHealthRate**（例如同時滿足飢餓與 below20Hours \> 48.0 時為 \-2.0 \+ (-0.1) \= \-2.1/hr）。TimeEngine 必須依 Signed Rate Threshold Crossing 以 totalHealthPenaltyRate 精確切割 Health \= 40 交點，確保兩種扣血共同作用直至 health 精確抵達 40.0。當 **10 \< health \<= 40** 時，MoodHealthPenalty 立即停止（moodHealthRate 強制為 0/hr，絕不因低心情而將寵物推入 CRITICAL \< 40 或死亡），僅保留 starvationHealthRate（若滿足飢餓/缺水則維持 \-2.0/hr），並精確切割至保護下限 Health \= 10（最終 health \= Math.max(10, health \+ totalHealthPenaltyRate \* actualHours)；若僅有低心情扣血且 starvationHealthRate \=== 0，則 health 嚴格受 40 地板保護不得低於 40）。  
 6. **步驟 5（執行健康救援狀態機 Recovery State Machine \- P0-2, P0-4, P1-6）：**  
    1. **1\. NORMAL ➔ CRITICAL：** 當 health \< 40 時觸發一次轉換，僅在此轉換瞬間執行 recoveryBoostAccumulatedHours \= 0。  
    2. **2\. CRITICAL ➔ RECOVERY\_BOOST：** 處於 CRITICAL 狀態下，當滿足 hunger \>= 50 && hydration \>= 50 且 recoveryBoostAccumulatedHours \< 2.0 時轉入，每小時恢復 \+10.0 health（按 actualHours 計算），並累加 recoveryBoostAccumulatedHours \+= actualHours（上限 2.0）。  
@@ -401,9 +401,9 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.15 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.16 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
-4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.15 未變更）
+4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.16 未變更）
 
 ### **8.E.2 核心自動化驗收測試案例 (Vitest Acceptance Criteria)**
 
