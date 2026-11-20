@@ -572,7 +572,7 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
    12. **TC-MH-09（NATURAL\_RECOVERY 暫停 Mood \< 40）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 30 時，恢復暫停（+0/hr）。  
    13. **TC-MH-10（離線模擬分段一致性）：** 驗證一次模擬 120 小時（跨越 72h 低心情門檻與 40 安全地板）與分 10 次每次 12 小時模擬，最終 Health、Mood、lowMoodDuration 結果誤差 \< 1e-9。  
    14. **TC-MH-11（存檔與讀檔持久化）：** 驗證 lowMoodDuration（below40Hours 與 below20Hours）跨越存檔與重啟生命週期時完整保留並正確續算（以下數值為測試 fixture，非新增遊戲規則或調整門檻）：  
-       \- **測試前置狀態（Fixture）：** mood \= 10（確保推進期間維持 Mood \< 20，兩項計時器同步累加）、hunger \= 80、hydration \= 80（隔離飢餓/缺水干擾），且 lowMoodDuration \= { below40Hours: 55.5, below20Hours: 23.5 }。  
+       \- **測試前置狀態（Fixture）：** 測試起點設為 Day 1 08:00，health \= 100、mood \= 10（確保推進期間維持 Mood \< 20，兩項計時器同步累加）、hunger \= 80、hydration \= 80（隔離飢餓/缺水干擾），且 lowMoodDuration \= { below40Hours: 55.5, below20Hours: 23.5 }。  
        \- **測試步驟與斷言：** (1) 建立上述初始狀態；(2) 寫入存檔；(3) 關閉並重新載入存檔；(4) 斷言讀檔後 below40Hours \=== 55.5 且 below20Hours \=== 23.5（誤差 \< 1e-9）；(5) 推進模擬時間 1.0 小時；(6) 斷言推進後 below40Hours \=== 56.5 且 below20Hours \=== 24.5（由原累積值續算而非歸零，誤差 \< 1e-9）。  
        \- **分階段 Adapter 執行時程： Phase A** 以 JSON Adapter 執行 TC-MH-11（不要求提前實作 SQLite）；**Phase C** 待 SQLite Adapter 完成後，以相同測試案例與驗收條件執行；兩種 Adapter 皆須保證 lowMoodDuration 之序列化與反序列化結果完全一致。  
    15. **TC-MH-12（夜間係數不影響低心情扣血）：** 驗證夜間 (23:00\~07:00) 觸發低心情扣血時，扣血速率維持 \-0.05/hr 或 \-0.1/hr，不受 0.3 時段係數減免。
