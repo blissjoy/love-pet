@@ -1,11 +1,10 @@
-# **拾暖伴伴 (shinuan) AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.26)**
+# **拾暖伴伴 (shinuan) AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.27)**
 
-**【版本資訊】** Master PRD v2.1.26（2026-11-20 凍結候選稿）  
+**【版本資訊】** Master PRD v2.1.27（2026-11-20 修訂稿）  
 **【本次修訂重點】**  
-1\. 修正 8.C.2 商品 Schema 與目錄表格（P2）：將原先混寫的「合作標示 (dataType)」拆分為兩個獨立欄位——productType: "regular" \| "sponsored" \| "free"（商品合作類型）與 dataType: "real" \| "mock"（資料真實性），避免工程實作混淆 Schema / Enum。  
-2\. 同步 0\. 核心術語表 (Glossary) 的 MoodHealthPenalty 定義（P3）：補齊 Mood 0 \~ 19 且 below20Hours \<= 48.0、below40Hours \> 72.0 時承接 \-0.05/hr 的規則，並明確標示嚴格大於（\> 72.0 / \> 48.0）交點起算語意。  
-3\. 統一 8.C.1 步驟 4.5 與 8.E.2 10 日低心情驗收劇本之 48.0 / 72.0 小時精確交點表述（P3）：明定須於精確交點切割區段（嚴禁先累加整段 0.25 小時步長再將整段套用扣血），僅從精確跨越 72.0 / 48.0 小時交點之後的時間區段開始套用對應扣血速率。  
-**【核心規則保留聲明】** 本次修訂僅解決 PET-30 指出之 3 項規格與文字一致性問題，未更動既有基因機率、TimeEngine 衰退率、Recovery 數值、Health 40/10 保護規則、商品既有售價與效果數值及各項自動化驗收測試預期結果。
+1\. 清理 8.E.2 TC-09 情境 B 重複的 10 日低心情劇本並獨立為子情境 B-3（P2-01、P2-02）：刪除舊版重複段落，僅保留採用精確交點語意之 10 日低心情劇本，並將其獨立為子情境 B-3，明定完整初始 Fixture（startTime \= Day 1 08:00、hunger \= 80、hydration \= 80、mood \= 85、health \= 100、recoveryState \= "NORMAL"、lowMoodDuration \= { below40Hours: 0, below20Hours: 0 }），使每日照護後 Mood 序列（97, 86, 75, 64, 53, 42, 31, 20, 12, 12）與 72h / 48h 門檻驗收起點完全明確，不更動劇本數值與測試預期結果。  
+2\. 補齊 8.C.2 與 8.C.3 商品來源欄位型別與 mock / real 必填規範（P2-03）：明定 sourceName（必填）、sourceUrl（string \| null，mock 可為 null，real 須提供有效來源 URL）與 dataVerifiedAt（string \| null，mock 未取得官方核實前為 null；另以 lastReviewedAt 記錄內部審查日期如 2026-11-19，避免與官方資料核實日期混為一談）。  
+**【核心規則保留聲明】** 本次修訂僅解決 v2.1.26 審查指出之 3 項 P2 問題，未更動既有 MoodHealthPenalty 公式、72h / 48h 門檻、Health 40 / 10 保護規則、商品既有售價與效果數值及各項自動化驗收測試預期結果。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -455,7 +454,11 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 
 ### **8.C.2 商品目錄與遊戲效果平衡表 (food-catalog.v1.json)**
 
-所有商品依「品類基準 \+ 個性化微調」配置效果，品牌合作商品享有完全相同的平衡公式；Schema 明確區分兩個獨立欄位：productType ("regular" \| "sponsored" \| "free") 表示商品合作類型，dataType ("real" \| "mock") 表示資料真實性，並搭配 sourceName、sourceUrl 與 dataVerifiedAt 確保資訊可追溯（UI 層對 mock 商品強制顯示「測試商品/模擬資料」標籤）：  
+所有商品依「品類基準 \+ 個性化微調」配置效果，品牌合作商品享有完全相同的平衡公式；Schema 明確區分兩個獨立欄位：productType ("regular" \| "sponsored" \| "free") 表示商品合作類型，dataType ("real" \| "mock") 表示資料真實性，並搭配 sourceName、sourceUrl、dataVerifiedAt 與 lastReviewedAt 確保資訊可追溯（UI 層對 mock 商品強制顯示「測試商品/模擬資料」標籤）：  
+\- `sourceName: string`（必填：未取得官方資料時標示模擬資料來源，如 "MVP 模擬測試資料"；取得官方資料時標示官方來源）。  
+\- `sourceUrl: string | null`（`mock` 商品可為 `null`；`real` 商品必須提供有效來源 URL）。  
+\- `dataVerifiedAt: string | null`（官方資料核實日期，格式 `YYYY-MM-DD`；尚未取得官方資料核實之 `mock` 商品應為 `null`，不得將內部審查日期誤填為官方核實日期）。  
+\- `lastReviewedAt: string | null`（記錄內部審查日期，格式 `YYYY-MM-DD`，如 "2026-11-19"，與官方核實日期 dataVerifiedAt 區分）。  
 **【商品定價級距與固定效果白名單驗證準則】** MVP 階段不設自動營養換算公式，所有上架商品（含一般商品與品牌合作商品）均須由 PO 核准並登錄於固定商品效果白名單 food-catalog.v1.json。同一級距內允許依真實營養特性（如高水分慕斯罐水分略高、高肉含量商品飽食略高）微調數值，但**定價級距上下限為硬性天花板（定價級距優先於營養微調，嚴禁跨級突破）**，且嚴禁以品牌合作身分、贊助金額或曝光合約作為任何加成參數。QA 驗證時逐筆核對商品之 category、price 所屬級距及 gameEffect 是否完全落於下表合法區間：
 
 | 商品類別 | 定價級距（積分） | 合法飽食區間 | 合法水分區間 | 合法心情區間 |
@@ -481,7 +484,7 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 
 ### **8.C.3 日常積分與「商品探索任務」平衡表 (EconomyEngine)**
 
-開局預設 **200 積分**。dailyLimits 隨 GameState 一起保存，包含裝置本地日期 YYYY-MM-DD、lastClaimedTimestamp 與當日已發放獎勵事件 ID 集合（claimedRewardIds: string\[\]）；每日獎勵採「每個裝置本地日曆日最多領取一次 ＋ 20 小時最小實際冷卻間隔」雙重規則，防止短時間內透過調整時區重複領取，同時保留正常早晚作息彈性：玩家領取每日獎勵時，必須同時滿足：(1) currentLocalDate \> lastClaimedLocalDate（防止時鐘回撥或往西跨時區日期倒退重複領取）；且 (2) now \- lastClaimedTimestamp \>= 20 \* 3\_600\_000（防止短時間內透過調整時區重複領取，並保留正常早晚作息彈性）。若偵測時鐘回撥 (now \< lastClaimedTimestamp) 或因跨時區旅行/手動調整致本地日期倒退 (currentLocalDate \< lastClaimedLocalDate)，拒絕重複發放獎勵。不補發未登入日之簽到或互動積分，高健康度日結獎勵僅於實際跨日結算當下觸發一次（在取得官方正式核實前所有商品一律標示 dataType: "mock"、sourceName: "MVP 模擬測試資料"、dataVerifiedAt: "2026-11-19"）：
+開局預設 **200 積分**。dailyLimits 隨 GameState 一起保存，包含裝置本地日期 YYYY-MM-DD、lastClaimedTimestamp 與當日已發放獎勵事件 ID 集合（claimedRewardIds: string\[\]）；每日獎勵採「每個裝置本地日曆日最多領取一次 ＋ 20 小時最小實際冷卻間隔」雙重規則，防止短時間內透過調整時區重複領取，同時保留正常早晚作息彈性：玩家領取每日獎勵時，必須同時滿足：(1) currentLocalDate \> lastClaimedLocalDate（防止時鐘回撥或往西跨時區日期倒退重複領取）；且 (2) now \- lastClaimedTimestamp \>= 20 \* 3\_600\_000（防止短時間內透過調整時區重複領取，並保留正常早晚作息彈性）。若偵測時鐘回撥 (now \< lastClaimedTimestamp) 或因跨時區旅行/手動調整致本地日期倒退 (currentLocalDate \< lastClaimedLocalDate)，拒絕重複發放獎勵。不補發未登入日之簽到或互動積分，高健康度日結獎勵僅於實際跨日結算當下觸發一次（在取得官方正式核實前所有商品一律標示 dataType: "mock"、sourceName: "MVP 模擬測試資料"、sourceUrl: null、dataVerifiedAt: null，並以 lastReviewedAt: "2026-11-19" 記錄內部審查日期；取得官方正式核實後則更新為 dataType: "real"、填入實際官方 sourceName、有效 sourceUrl 與官方 dataVerifiedAt）：
 
 7. **每日首次陪伴簽到：** `+40` 積分（每日上限 1 次）。  
 8. **商品探索任務（不限品牌或一般商品，無廣告式領獎彈窗）：**  
@@ -507,9 +510,9 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.26 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.27 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
-4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -&gt; v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.26 未變更）
+4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -&gt; v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.27 未變更）
 
 ### **8.E.2 核心自動化驗收測試案例 (Vitest Acceptance Criteria)**
 
@@ -545,7 +548,7 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
       1\. **階段 1（無扣血期，Day 1 08:00 \~ Day 9.067）：** Day 5 晚間雖曾短暫跌破 40，但 Day 6 08:00 照護後 Mood 拉回 42（重置 below40Hours \= 0），隨後依日間衰退率 1.25/hr 經 1.6 小時於 **Day 6.067**（Day 6 09:36）再次跌破 40（開始連續累計 below40Hours）；雖於 Day 6 末段短暫跌破 20，但 **Day 7 08:00** 的餵食飲水脈衝將 Mood 拉回 31，使 below20Hours 立即歸零重置（below40Hours 則持續累計）；直到 **Day 8 08:00** 脈衝後 Mood \= 20（重置 below20Hours \= 0）隨即再次跌破 20，才開始連續累計 below20Hours。在 below40Hours 未滿 72h 前全程零扣血。  
       2\. **階段 2（一般低落扣血期，Day 9.067 \~ Day 10.000）：** 當 **Day 9.067**（Day 9 09:36）below40Hours 滿 72.0 小時但 below20Hours 尚未滿 48.0 小時之區間（共 **22.4 小時**），啟動 **\-0.05/hr** 緩慢扣血（此階段累計扣除 **1.12** 點 Health）。  
       3\. **階段 3（嚴重低落扣血期與 40 安全地板，Day 10.000 起）：** 當 **Day 10.000**（Day 10 08:00 結算交點）below20Hours 滿 48.0 小時起，扣血速率切換為 **\-0.1/hr**（每日 \-2.4 點 Health，取代 \-0.05/hr 不疊加），且受 Health \>= 40 安全地板保護（絕不會因不陪伴而進入 CRITICAL 或死亡），玩家回來陪伴玩耍與使用商品即可輕鬆回滿。  
-   3. **長期僅於 08:00 餵食飲水但不陪伴情境驗證（隔離飢餓與缺水懲罰，依日間 1.25/hr、夜間 0.375/hr 實際衰退率與 TimeEngine 交點精確模擬）：** 若玩家連續 10 日每日僅於 08:00 餵 3 糧 \+ 3 水但不互動（因 Hunger 與 Hydration 日衰退均為 73.6，3 糧 \+ 3 水使兩者每日照護後均達 100.0、次日照護前均為 26.4，全程嚴格維持 \>= 20，**完全隔離飢餓與缺水對 Health 及 Mood 的干擾**；每日 08:00 瞬間增加 Mood \+12，隨後 24 小時基礎衰退 Mood \-23，各日 08:00 照護後 Mood 依序為 Day 1: 97、Day 2: 86、Day 3: 75、Day 4: 64、Day 5: 53、Day 6: 42、Day 7: 31、Day 8: 20、Day 9: 12、Day 10: 12；不可僅用每日平均衰退量推算，須以 Game Core TimeEngine 實際模擬結果為最終驗收依據）：  
+   3. **3\. 子情境 B-3（長期僅於 08:00 餵食飲水但不陪伴情境驗證 — 隔離飢餓與缺水懲罰，依日間 1.25/hr、夜間 0.375/hr 實際衰退率與 TimeEngine 交點精確模擬）：** 初始 Fixture 明確指定為 startTime \= Day 1 08:00、hunger \= 80、hydration \= 80、mood \= 85、health \= 100、recoveryState \= "NORMAL"、lowMoodDuration \= { below40Hours: 0, below20Hours: 0 }。若玩家連續 10 日每日僅於 08:00 餵 3 糧 \+ 3 水但不互動（因 Hunger 與 Hydration 日衰退均為 73.6，3 糧 \+ 3 水使兩者每日照護後均達 100.0、次日照護前均為 26.4，全程嚴格維持 \>= 20，**完全隔離飢餓與缺水對 Health 及 Mood 的干擾**；每日 08:00 瞬間增加 Mood \+12，隨後 24 小時基礎衰退 Mood \-23，各日 08:00 照護後 Mood 依序為 Day 1: 97、Day 2: 86、Day 3: 75、Day 4: 64、Day 5: 53、Day 6: 42、Day 7: 31、Day 8: 20、Day 9: 12、Day 10: 12；不可僅用每日平均衰退量推算，須以 Game Core TimeEngine 實際模擬結果為最終驗收依據）：  
       1\. **階段 1（無扣血期，Day 1 08:00 \~ Day 9.067）：** Day 5 晚間雖曾短暫跌破 40，但 Day 6 08:00 照護後 Mood 拉回 42（重置 below40Hours \= 0），隨後依日間衰退率 1.25/hr 經 1.6 小時於 **Day 6.067**（Day 6 09:36）再次跌破 40（開始連續累計 below40Hours）；雖於 Day 6 末段短暫跌破 20，但 **Day 7 08:00** 的餵食飲水脈衝將 Mood 拉回 31，使 below20Hours 立即歸零重置（below40Hours 則持續累計）；直到 **Day 8 08:00** 脈衝後 Mood \= 20（重置 below20Hours \= 0）隨即再次跌破 20，才開始連續累計 below20Hours。在 below40Hours 未滿 72h 前全程零扣血。  
       2\. **階段 2（一般低落扣血期，Day 9.067 \~ Day 10.000）：** 當 **Day 9.067**（Day 9 09:36）below40Hours 精確跨越 72.0 小時後（嚴格 \> 72.0）且 below20Hours 尚未超過 48.0 小時（\<= 48.0）之區間（共 **22.4 小時**），從該交點之後的時間區段開始啟動 **\-0.05/hr** 緩慢扣血（此階段累計扣除 **1.12** 點 Health）。  
       3\. **階段 3（嚴重低落扣血期與 40 安全地板，Day 10.000 起）：** 當 **Day 10.000**（Day 10 08:00 結算交點）below20Hours 精確跨越 48.0 小時後（嚴格 \> 48.0），從該交點之後的時間區段開始切換為 **\-0.1/hr**（每日 \-2.4 點 Health，取代 \-0.05/hr 不疊加），且受 Health \>= 40 安全地板保護（絕不會因不陪伴而進入 CRITICAL 或死亡），玩家回來陪伴玩耍與使用商品即可輕鬆回滿。  
