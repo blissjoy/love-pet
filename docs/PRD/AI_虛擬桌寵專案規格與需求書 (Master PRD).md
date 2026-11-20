@@ -1,9 +1,15 @@
-# **拾暖伴伴 (shinuan) AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.23)**
+# **拾暖伴伴 (shinuan) AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.24)**
 
-**【版本資訊】** Master PRD v2.1.23（2026-11-20 修訂稿）  
+**【版本資訊】** Master PRD v2.1.24（2026-11-20 修訂稿）  
 **【本次修訂重點】**  
-1\. 依 PET-27 審查補強 8.E.3 之 TC-MH-11（存檔與讀檔持久化）可執行驗收規格：明定非零測試 fixture（mood \= 10、hunger \= 80、hydration \= 80、lowMoodDuration \= { below40Hours: 55.5, below20Hours: 23.5 }）、6 項明確測試步驟與推進 1.0 小時後之精確斷言值（56.5 / 24.5），並明確區分 Phase A（JSON Adapter）與 Phase C（SQLite Adapter）之執行時程與序列化一致性要求。  
-**【核心規則保留聲明】** 本次修訂僅細化 TC-MH-11 測試 fixture 與分階段執行時程並同步版本註記，不變更既有遊戲核心數值、計算公式、基因機率、健康保護規則、Recovery 機制、MoodHealthPenalty、經濟平衡及既有驗收測試預期結果。
+1\. 依 PET-28 審查與 PO 決策定案 P1-01 稀有突變機率採**方案 A（各具稀有突變池之圖層獨立 5%）**：同步修正 3.1、8.A.2 與 8.A.4，明定設有稀有突變之 4 個圖層（ears、pupilColor、coatPattern、tail）於各自 20% 變異路徑中佔 25%（即各層獨立 5%，單隻貓至少出現一種稀有突變之機率約 18.55%，允許並存），其餘 3 層變異路徑 100% 走全品種合法白名單重組。  
+2\. 補齊 8.C.1（P2-01）：明定凡改變 Hunger / Hydration / Mood / Health 之 GameCommand 完成數值結算後，必須於該 commandTimestamp 立即重新評估 RecoveryState 狀態機條件，不得延遲至下一個 SimulationStep。  
+3\. 完善 8.A.3 與 8.A.4（P2-02、P3-01）：將原 規則 5 重編為 規則 4 消除缺號，並明定相容性修正採固定順序 規則 1 ➔ 規則 2 ➔ 規則 3 單次循序套用、不反覆迴圈，前條修正結果直接作為後條輸入，最後執行合法性檢查不通過時才觸發 規則 4 回退 SAFE\_DEFAULT\_APPEARANCE。  
+4\. 對齊 5.2、7 與 8.D 商店實作階段（P2-03）：明定 Phase B 僅實作固定 Mock Data 之商店靜態 UI Prototype（不含購買與經濟結算），正式商店功能、背包、探索任務與 Remote Config 統一於 Phase D 實作。  
+5\. 補充 2.1 與 8.C.2 品牌公平驗證依據（P2-04）：明定一般商品與品牌合作商品套用同一套品類平衡區間與定價級距規則，嚴禁以品牌合作身分、贊助金額或曝光合約作為數值加成參數，並補齊 QA 審核準則。  
+6\. 統一 8.B.1 與 8.B.3 動畫 ID（P2-05）：將 8.B.3 之 lie\_down 更正為正式 ID cat\_loaf（P0），並納入 side\_sleep（P1），明定全專案共用唯一 AnimationId。  
+7\. 修正 8.B.1 Priority 60 主動畫優先序寫法（P3-03）為明確編號清單，並確保 8.E.3 測試清單為獨立 1 \~ 12 編號（P3-02）。  
+**【核心規則保留聲明】** 本次修訂僅解決 PET-28 點出之跨章節規格不一致與實作邊界缺口，不變更既有 TimeEngine 衰退與回血數學公式、Health 40/10 保護規則、MoodHealthPenalty 門檻、TC-01 \~ TC-09 與 TC-MH-01 \~ TC-MH-12（含 TC-MH-11）驗收預期結果。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -60,7 +66,7 @@
 1. **商品是選擇，不是強迫（免費照護保障）：** 玩家可自由使用基礎免費食物與飲水，足以持續維持貓咪健康與基本需求，絕不會因為沒買合作品牌商品而導致貓咪生病或受到不可逆懲罰。每日一次登入的標準免費照護量（3 份免費乾糧 \+ 4 份免費飲水 \+ 3 次互動），必須足以讓寵物在長期正常照護情境下維持基本健康，不得要求玩家透過付費商品、觀看廣告或提高登入頻率，才能避免寵物健康持續惡化。  
 2. **廣告與一般商品並存：** 商店內同時提供一般遊戲道具與合作廠商商品，合作商品清楚標示「品牌合作 / 贊助內容」，維持畫面清爽。  
 3. **商品介紹具備真實知識價值：** 點進飼料可查看真實品牌、原料成分、蛋白質/脂肪/水分營養分析、適用對象、資料來源及資料更新日期；MVP 階段之模擬商品須於 UI 明確標示「測試商品/模擬資料」。  
-4. **品牌公平與平衡原則：** 品牌合作商品不得因贊助關係取得額外數值加成。所有商品的遊戲回復效果均依固定的遊戲平衡公式配置（例如主食罐補水高、乾糧飽食高、零食心情高），廠商購買的是「品牌曝光與虛擬櫃位」，贊助費不得直接影響商品數值。  
+4. **品牌公平與平衡原則：** 品牌合作商品不得因贊助關係取得額外數值加成。所有商品的遊戲回復效果均依固定的遊戲平衡公式配置（例如主食罐補水高、乾糧飽食高、零食心情高），廠商購買的是「品牌曝光與虛擬櫃位」，贊助費不得直接影響商品數值。遊戲效果必須由預先定義的品類平衡規則與營養/定價級距決定，不得以品牌合作身分、贊助金額或曝光合約作為效果計算參數；同一品類允許依定價級距與真實營養特性微調數值，但一般商品與品牌合作商品一律套用相同的計算規則與數值上限區間。  
 5. **自然探索不干擾：** 僅在玩家主動進入商店挑選商品時才呈現完整品牌介紹，不彈出干擾性蓋版廣告，亦不設計逼迫刷廣告的機制。
 
 ## **2.2 商業假設與變現路徑 (商業驗證指標)**
@@ -90,7 +96,7 @@
 2. **七大外觀圖層拆解：** 貓咪外觀拆解為「頭型 (head)、耳朵形狀 (ears)、眼睛形狀 (eyes)、瞳孔顏色 (pupilColor)、花色斑紋 (coatPattern)、尾巴長度 (tail)、體型 (body)」7 大圖層。  
 3. **每圖層獨立抽選法則（40/40/20）：** 每個未鎖定圖層作為獨立抽選單位：  
    1. 第一階段來源抽選：40% 繼承父方品種預設特徵（若父方該圖層特徵池有多個候選值，則依池內權重再抽一次）、40% 繼承母方品種預設特徵、20% 進入變異路徑。  
-   2. 第二階段變異路徑（佔總機率 20%）：其中 `75%`（即總機率 `15%`）從全品種特徵池隨機重組，`25%`（即總機率 `5%`）從稀有突變池抽取（異色瞳、麒麟尾、折耳、星空斑紋）。  
+   2. 第二階段變異路徑（佔該圖層 20%）：針對設有稀有突變之 4 個圖層（ears、pupilColor、coatPattern、tail），變異路徑內 75%（即該圖層機率 15%）從該圖層合法通用特徵白名單隨機重組、25%（即該圖層機率 5%）觸發該圖層之稀有突變（折耳、異色瞳、星空斑紋、麒麟尾）；其餘無稀有突變之 3 個圖層（head、eyes、body），變異路徑 100% 從該圖層合法通用特徵白名單隨機重組。各圖層彼此獨立，單隻貓至少出現一種稀有突變之機率為 1 \- (1 \- 0.05)^4 \&approx; 18.55%，且允許同時出現多種稀有突變。  
    3. 若父母在某圖層特徵相同，父系與母系抽選結果均視為該特徵，機率不合併至突變池，突變仍依獨立機率抽選。  
 4. **Seed 與版本永久鎖定規範：**  
    1. seed 僅用於生成初始遺傳結果，不作為既有寵物外觀的唯一保存依據。  
@@ -186,7 +192,7 @@
 | :---- | :---- | :---- |
 | 遊戲核心 (100% 共用) | 純 TypeScript (packages/game-core) | **Phase A 必須實作。**負責品種傳承、性格、需求與健康平衡、TimeEngine、BehaviorEngine 與經濟規則，零平台依賴。 |
 | 設定載入與契約層 | TypeScript (config-loader / contracts) | **Phase A** 實作本機 JSON 載入、Schema 驗證與跨模組資料契約。遠端 Provider 配合商店與品牌商品目錄於 **Phase D** 導入（Phase B \~ C 不要求實作）。 |
-| 跨平台 UI 層 | React Native \+ TypeScript | **Phase B** 建立跨平台 UI 骨架及 App 主房間、領養、商店、商品成分頁與設定介面。 |
+| 跨平台 UI 層 | React Native \+ TypeScript | **Phase B** 建立跨平台 UI 骨架，包含 App 主房間、領養、設定介面，以及商店與商品成分頁之靜態 UI Prototype（僅使用固定 Mock Data 驗證版面與動線，不含實際購買、積分與經濟結算）；正式商店功能（商品目錄、積分、購買、背包、商品探索任務與 Remote Config）統一於 **Phase D** 實作。 |
 | Android 原生適配器 | Kotlin (WindowManager) | **Phase B** 驗證 Android 透明懸浮窗、生命週期管理、觸控拖曳、重力物理與系統電量事件回傳。 |
 | iOS 原生適配器 | Swift / SwiftUI (WidgetKit) | **Phase B** 驗證桌面 Widget 狀態展示、App Intents 快捷操作佇列與 App Group 資料共享。 |
 | 本機與雲端資料流 | JSON (Phase A) / SQLite (Mobile) | **Phase A** 使用防損 JSON 存檔；Mobile 階段導入 SQLite；後續才評估 Google Drive 個人備份與 Firebase 社交信箱。 |
@@ -297,7 +303,7 @@ PO 提出需求 ➔ AI Manager 分析需求及拆解任務 ➔ Architect 技術�
   * 實作基因生成、三層行為決策、0.25 小時步進之時間區段模擬、健康救援狀態機、防損 JSON 存檔（.tmp 寫入驗證與 .bak 備份），並通過 Vitest 單元、整合與 365 天長時模擬測試。  
 * **Phase B：Renderer Proof of Concept（渲染與跨平台骨架驗證）**  
   * 建立單隻「測試貓」與最少必要動畫（Idle、Walk、Sit、Sleep、Eat、Pet），驗證 7 大圖層換裝相容性。  
-  * 同步驗證 React Native 畫面、Android Kotlin 懸浮窗與 iOS SwiftUI Widget 讀取同一份 PetViewModel 的一致性後，再正式選定動畫引擎（Spine 2D / Rive / Sprite Sheet）。  
+  * 同步驗證 React Native 畫面、Android Kotlin 懸浮窗與 iOS SwiftUI Widget 讀取同一份 PetViewModel 的一致性後，再正式選定動畫引擎（Spine 2D / Rive / Sprite Sheet）。（商店與商品成分頁於本階段僅以固定 Mock Data 製作靜態 UI Prototype，不含購買與經濟結算，正式商店功能留待 Phase D）。  
 * **Phase C：Pet MVP（雙平台單貓陪伴上線）**  
   * 開放領養（MVP 限制單一帳號飼養一隻貓，確保模擬與懸浮窗體驗穩定）、7 層外觀生成、基礎性格與互動、完整需求與健康循環、SQLite 存檔與版本遷移（Migration）。  
 * **Phase D：商店與內容型原生廣告驗證**  
@@ -339,7 +345,7 @@ PO 提出需求 ➔ AI Manager 分析需求及拆解任務 ➔ Architect 技術�
 
 ### **8.A.2 初期收錄 6 大基礎品種初始特徵池 (breeds.v1.json) 與變異分布**
 
-12. **權重池配置與稀有突變分布 (traits.v1.json)：** 各品種在七大圖層上的預設候選池規則如下：coatPattern（花色圖層）具 70% 主花色 / 30% 次花色雙候選池（米克斯 tabby\_mackerel 70% / calico 30%、曼赤肯 bicolor\_tuxedo 70% / calico 30%、布偶 colorpoint 70% / bicolor\_tuxedo 30%、英短 solid 70% / tabby\_mackerel 30%、異國 tabby\_mackerel 70% / colorpoint 30%、緬因 tabby\_mackerel 70% / tortoiseshell 30%）；其餘 6 大圖層（head、ears、eyes、pupilColor、tail、body）各品種預設為 100% 品種代表特徵（如表格 8.A.2 所列之七層完整定義），跨品種混合透過父母各 40% 與 20% 變異路徑實現多樣性。第二階段變異路徑中，15% 全品種重組僅從合法通用特徵白名單（head: \["standard\_round", "chubby\_round", "square\_muzzle"\]、ears: \["pointed\_medium", "small\_round", "tufted\_large"\]、eyes: \["almond", "big\_round", "droopy\_cute"\]、pupilColor: \["amber", "emerald", "sapphire", "copper"\]、coatPattern: \["solid", "tabby\_mackerel", "bicolor\_tuxedo", "colorpoint", "calico", "tortoiseshell"\]、tail: \["long\_straight", "fluffy\_plume", "short\_bobtail"\]、body: \["normal", "chubby", "large\_fluffy"\]；排除專屬極端骨架 flat\_face、short\_legs 與 giant\_fluffy）中等權重隨機抽取；25% 稀有突變池（總機率 5%）採等權重分布（各 1.25%）：ears: "folded\_tip"、pupilColor: "heterochromia\_blue\_gold"、coatPattern: "starry\_rare"、tail: "kinked\_kirin"。
+12. **權重池配置與稀有突變分布 (traits.v1.json)：** 各品種在七大圖層上的預設候選池規則如下：coatPattern（花色圖層）具 70% 主花色 / 30% 次花色雙候選池（米克斯 tabby\_mackerel 70% / calico 30%、曼赤肯 bicolor\_tuxedo 70% / calico 30%、布偶 colorpoint 70% / bicolor\_tuxedo 30%、英短 solid 70% / tabby\_mackerel 30%、異國 tabby\_mackerel 70% / colorpoint 30%、緬因 tabby\_mackerel 70% / tortoiseshell 30%）；其餘 6 大圖層（head、ears、eyes、pupilColor、tail、body）各品種預設為 100% 品種代表特徵（如表格 8.A.2 所列之七層完整定義），跨品種混合透過父母各 40% 與 20% 變異路徑實現多樣性。第二階段變異路徑（方案 A：各可突變圖層獨立 5%）：設有稀有突變之 4 個圖層（ears: "folded\_tip"、pupilColor: "heterochromia\_blue\_gold"、coatPattern: "starry\_rare"、tail: "kinked\_kirin"），在各自獨立的 20% 變異路徑中，75%（該圖層機率 15%）從該圖層合法通用特徵白名單等權重隨機抽取，25%（該圖層機率 5%）觸發該圖層之稀有突變；單隻貓至少出現一種稀有突變的理論機率為 1 \- (1 \- 0.05)^4 \&approx; 18.55%，且允許同一隻貓同時出現多種稀有突變。未設有稀有突變之 3 個圖層（head、eyes、body），其 20% 變異路徑 100% 從該圖層合法通用特徵白名單等權重隨機抽取。
 
 | 品種 ID (BreedId) | 顯示名稱 | 初始預設特徵池 (Trait Pool \- 七層完整定義) | 基礎性格傾向 (0\~100) | 合法毛色 HEX 色碼區間 (Shader 基準) |
 | :---- | :---- | :---- | :---- | :---- |
@@ -361,10 +367,11 @@ PO 提出需求 ➔ AI Manager 分析需求及拆解任務 ➔ Architect 技術�
     * `tail`：`long_straight`、`fluffy_plume`、`short_bobtail`、`kinked_kirin`（稀有突變）  
     * `body`：`normal`、`chubby`、`short_legs`、`large_fluffy`、`giant_fluffy`  
 14. **確定性相容修正規則 (appearance-compatibility.v1.json)：**  
+    \- **執行順序與單次循序套用規範：** 固定依序執行 **規則 1 ➔ 規則 2 ➔ 規則 3**（單次循序執行，不反覆迴圈重跑）。前一條規則修正後的外觀狀態直接作為下一條規則的判斷輸入（例如同時出現 head \=== "flat\_face"、body \=== "giant\_fluffy"、ears \=== "folded\_tip" 時，先由規則 1 將 body 修正為 "chubby"，後續檢查規則 3 時因 body 已非 "giant\_fluffy" 而不再觸發）；若多條規則依序檢查時均符合條件，則全部依序執行。規則 1 ➔ 2 ➔ 3 執行完畢後進行最終合法性檢查（確認七大圖層皆為合法枚舉且不再違反規則 1\~3），若仍不合法才觸發規則 4 回退 SAFE\_DEFAULT\_APPEARANCE。  
     * **規則 1（跨圖層：扁臉與大型骨架比例衝突）：** 若 head \=== "flat\_face" 且 body \=== "giant\_fluffy"，為避免扁臉搭配巨型緬因骨架比例失真，強制將 body 修正為 "chubby"。  
     * **規則 2（跨圖層：重點色與花色遮罩衝突）：** 若 coatPattern \=== "colorpoint" 且 pupilColor \=== "amber"，強制將 pupilColor 修正為 "sapphire"。  
     * **規則 3（跨圖層：稀有折耳與緬因大耳羽衝突）：** 若 ears \=== "folded\_tip" 且 body \=== "giant\_fluffy"，強制將 ears 修正為 "tufted\_large"。  
-    * **規則 5（終極安全回退 SAFE\_DEFAULT\_APPEARANCE）：** 若經過單次規則替換後最終驗證仍不合法，直接退回完整七層安全預設組合 SAFE\_DEFAULT\_APPEARANCE：`{ head: "standard_round", ears: "pointed_medium", eyes: "almond", pupilColor: "amber", coatPattern: "solid", tail: "long_straight", body: "normal" }`。  
+    * **規則 4（終極安全回退 SAFE\_DEFAULT\_APPEARANCE）：** 若經過單次規則替換後最終驗證仍不合法，直接退回完整七層安全預設組合 SAFE\_DEFAULT\_APPEARANCE：`{ head: "standard_round", ears: "pointed_medium", eyes: "almond", pupilColor: "amber", coatPattern: "solid", tail: "long_straight", body: "normal" }`。  
     * **註：** 未來若開放其他遺傳組合產生 flat\_face \+ giant\_fluffy，維持 body 修正為 "chubby" 以確保比例協調。
 
 ### **8.A.4 遺傳生成執行優先級 (Genetics Priority)**
@@ -378,8 +385,8 @@ PO 提出需求 ➔ AI Manager 分析需求及拆解任務 ➔ Architect 技術�
     * **異國短/長毛 (exotic) head 規則：**  
       * 若父母雙方皆為 `exotic`（雙親同種）：子代 `head` 為 **80%** `flat_face` **/ 20%** `standard_round`（避免 100% 鎖死單一頭型）。  
       * 若僅一方為 `exotic`（跨品種配對）：子代 `head` 為 **45%** `flat_face` **/ 55% 另一方品種之** `head`。  
-16. **步驟 2（一般圖層獨立 40/40/20 抽選）：** 其餘未鎖定圖層依固定順序（head ➔ ears ➔ eyes ➔ pupilColor ➔ coatPattern ➔ tail ➔ body）逐一獨立抽選：40% 父系預設特徵、40% 母系預設特徵、20% 變異路徑（變異路徑內 75% 全品種特徵池重組、25% 稀有突變池）。  
-17. **步驟 3（確定性相容性修正）：** 依 8.A.3 規則執行單次衝突替換與最終驗證。  
+16. **步驟 2（一般圖層獨立 40/40/20 抽選）：** 其餘未鎖定圖層依固定順序（head ➔ ears ➔ eyes ➔ pupilColor ➔ coatPattern ➔ tail ➔ body）逐一獨立抽選：40% 父系預設特徵、40% 母系預設特徵、20% 變異路徑（設有稀有突變之 ears、pupilColor、coatPattern、tail 四層於變異路徑內 75% 走該圖層全品種合法白名單重組、25% 觸發該圖層稀有突變，即每層獨立 5%；無稀有突變之 head、eyes、body 三層於變異路徑內 100% 走全品種合法白名單重組）。  
+17. **步驟 3（確定性相容性修正）：** 依 8.A.3 固定順序（規則 1 ➔ 規則 2 ➔ 規則 3）執行單次循序衝突替換與最終合法性驗證（未通過則依規則 4 回退 SAFE\_DEFAULT\_APPEARANCE）。  
 18. **步驟 4（動態毛色微調）：** 依據 `seed` 在合法 HEX 區間內進行 `±8%` 明度與飽和度微調。
 
 ## **8.B 動畫與行為決策仲裁規格 (BehaviorEngine & FSM Spec)**
@@ -395,7 +402,7 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 | **100** | 緊急生理求救 (CRITICAL\_NEEDS) | `health < 30` 或 `hunger < 15` 或 `hydration < 15` | 匍匐警戒 (crouch\_alert) 或虛弱打瞌睡，夾尾/垂尾，彈出 🏥 / 🐟 / 💧 | **同級仲裁**：iconIds 可同時顯示所有達標圖示；主動畫依明確清單順序 **1\. health \< 30 ➔ 2\. hydration \< 15 ➔ 3\. hunger \< 15** 決定。可中斷任何低優先級行為（包含 Priority 90 與 Priority 40 eat），持續播放至 health \>= 30 && hunger \>= 15 && hydration \>= 15。 |
 | **90** | 負面防禦反應 (NEGATIVE\_REACTION) | 10 秒內 \[now \- 10000, now\] `POKE > 3` 次（第 4 次觸發），或高空掉落 LANDING（定義為 Android 懸浮窗拖曳放開時，垂直落下距離超過螢幕高度 25% 觸發，短距離輕放不觸發） | 背對生氣 (turn\_back\_angry) 或炸毛，快速鞭打尾，彈出 💢 並哈氣 | 若同時發生，主動畫優先序為 **LANDING \> POKE**。優先級高於 Priority 80，可暫時喚醒睡眠中的貓咪執行 4,000 ms 動畫。結束後進入 15,000 ms 互動無效冷卻期（同時限制 PetCat 摸頭與 PlayWithPet 玩耍）。撫摸/玩耍冷卻（15,000 ms）與 Priority 60 提醒冷卻（60,000 ms）各自獨立計時。冷卻期間摸頭與玩耍仍可播放互動動畫，但不給心情與積分獎勵，餵食/補水仍完全有效；冷卻期間再次 Poke 不延長冷卻時間。 |
 | **80** | 生理作息睡眠 (SLEEP\_MODE) | 本地時間 `23:00 ~ 07:00` 且無玩家主動互動 | 靠邊熟睡 (sleep) 或母雞蹲 (cat\_loaf)，休眠捲曲尾，彈出 💤 | **夜間可喚醒規則**：僅能被有效的玩家數值互動指令（FeedPet、PetCat、PlayWithPet）暫時喚醒並執行 Priority 40，互動結束後重新入睡；低電量、插線充電等系統事件不喚醒睡眠。 |
-| **60** | 一般需求提醒 (MODERATE\_NEEDS) | `hunger < 40` 或 `hydration < 40` 或 `mood < 45` | 坐下 (sit) 盯著玩家，尾巴慢速左右掃動，彈出 🐟 / 💧 / 🎾 | **同級仲裁**：iconIds 合併顯示所有達標提醒圖示；主動畫依 **hydration \< 40 \> hunger \< 40 \> mood \< 45** 決定。每次提醒持續 `5,000 ms`，共用冷卻 `60,000 ms`（從提醒動畫首次開始播放的時間戳 startedAt 起算）。 |
+| **60** | 一般需求提醒 (MODERATE\_NEEDS) | `hunger < 40` 或 `hydration < 40` 或 `mood < 45` | 坐下 (sit) 盯著玩家，尾巴慢速左右掃動，彈出 🐟 / 💧 / 🎾 | **同級仲裁**：若同時符合多個條件，iconIds 合併顯示所有達標提醒圖示，但主動畫只選擇最高優先項目，優先順序為：1. hydration \&lt; 40 ➔ 2\. hunger \&lt; 40 ➔ 3\. mood \&lt; 45。每次提醒持續 `5,000 ms`，共用冷卻 `60,000 ms`（從提醒動畫首次開始播放的時間戳 startedAt 起算）。 |
 | **40** | 玩家主動互動 (PLAYER\_INTERACTION) | 收到有效數值互動指令 FeedPet（使用食物）、PetCat（有效摸頭）或 PlayWithPet（有效玩耍） | FeedPet ➔ 進食 (eat) 舉問號尾微顫；PetCat ➔ 摸頭呼嚕 (pet) 彈出 ❤️；PlayWithPet ➔ 玩耍撲抓 (play) 彈出 🎾 | 1\. 數值與動畫解耦：三種互動皆先執行 GameCommand 數值與積分結算，動畫中斷絕不回滾已生效之數值。2. 持續與中斷：eat、pet、play 均持續 3,000 ms（不可被待機或 23:00 跨夜中斷，但可隨時被 Priority 100 緊急生理求救或 Priority 90 負面防禦中斷）。3. 夜間回歸：若於 23:00\~07:00 喚醒執行，動畫結束後自動返回 Priority 80 (SLEEP\_MODE)。4. 冷卻與併發：受 Priority 90 負面冷卻（15,000 ms）限制（冷卻期間摸頭/玩耍不給心情與積分）；同一 Tick 多筆指令依佇列順序執行（FeedPet \> PlayWithPet \> PetCat）。 |
 | **10** | 性格待機巡邏 (IDLE\_AND\_PATROL) | 無上述高優先級事件時執行 | 漫步 (walk \+ 問號尾)、母雞蹲 (cat\_loaf)、貴妃躺 (side\_sleep，需 mood \>= 80\) 輪替 | 每次動作持續 `4,000 ~ 8,000 ms`，可隨時被高優先級事件中斷。 |
 
@@ -407,15 +414,16 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 
 ### **8.B.3 動畫資產矩陣分級 (Animation Asset Matrix)**
 
-5. **Phase B / C 必備核心動畫 (P0)：**`idle`（待機）、`walk`（漫步）、`sit`（坐下）、`lie_down`（趴臥/母雞蹲）、`sleep`（熟睡）、`eat`（進食）、`pet`（被摸呼嚕）、`play`（玩耍）。  
-6. **Phase C 進階體驗動畫 (P1)：** `drag`（Android 拎起）、`drop`（掉落）、`landing`（落地）、`turn_back_angry`（生氣）、`sniff_and_turn_away`（挑食撇頭）、`crouch_alert`（虛弱匍匐）。
+5. **【唯一 AnimationId 規範】** BehaviorEngine、PetViewModel 與本動畫資產矩陣全專案強制使用同一組正式 AnimationId，不另設別名。  
+6. **Phase B / C 必備核心動畫 (P0)：**`idle`（待機）、`walk`（漫步）、`sit`（坐下）、`cat_loaf`（母雞蹲/趴臥）、`sleep`（熟睡）、`eat`（進食）、`pet`（被摸呼嚕）、`play`（玩耍）。  
+7. **Phase C 進階體驗動畫 (P1)：**`drag`（Android 拎起）、`drop`（掉落）、`landing`（落地）、`turn_back_angry`（生氣）、`sniff_and_turn_away`（挑食撇頭）、`crouch_alert`（虛弱匍匐）、`side_sleep`（貴妃躺，mood \&gt;= 80 待機動作；Phase B 尚未實作前於待機輪替回退播放 cat\_loaf 或 idle）。
 
 ## **8.C 經濟系統與數值平衡表 (Economy & TimeEngine Spec)**
 
 ### **8.C.1 時間步進計算順序與日夜區段公式 (TimeEngine Math)**
 
 **【指令與時間模擬執行順序 (P1-4)】**  
-所有具有遊戲數值效果的 `GameCommand`（如 FeedPet、PetCat 等）在執行前，必須先呼叫 `TimeEngine.advanceTo(commandTimestamp)` 將遊戲狀態推進至該指令的有效時間點，再執行指令並套用數值變化。  
+所有具有遊戲數值效果的 `GameCommand`（如 FeedPet、PetCat 等）在執行前，必須先呼叫 `TimeEngine.advanceTo(commandTimestamp)` 將遊戲狀態推進至該指令的有效時間點，再執行指令並套用數值變化。每次會改變 Hunger、Hydration、Mood 或 Health 的 GameCommand 完成數值結算後，必須立即於該 GameCommand 的時間戳 (commandTimestamp) 重新評估相關狀態機條件（包含 NORMAL ➔ CRITICAL、CRITICAL ➔ RECOVERY\_BOOST 啟動、RECOVERY\_BOOST 中斷與恢復、NATURAL\_RECOVERY 恢復條件判斷，以及 Health \&gt;= 100 時的 NORMAL 重置與 recoveryBoostAccumulatedHours 歸零）；若符合轉換條件，轉換時間即為該 commandTimestamp，嚴禁延遲至下一個 SimulationStep。  
 **【連續閾值交點切割與時間區段計算 (Threshold Crossing Split)】**  
 為確保「一次補算 24 小時」與「任意時間點插入 GameCommand 分段補算」的最終結果一致，數值誤差小於 1e-9，TimeEngine 每次 advanceTo(now) 除按 0.25 小時（15 分鐘）基礎步長步進外，在推進時間區間 \[t\_start, t\_end\] 時，遇到以下任一狀態變化事件，必須建立精確交點切割 (Exact Boundary / Threshold Crossing Split)：  
 1\. 日夜時段邊界（每日 07:00 與 23:00）。  
@@ -449,7 +457,7 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 
 ### **8.C.2 商品目錄與遊戲效果平衡表 (food-catalog.v1.json)**
 
-所有商品依「品類基準 \+ 個性化微調」配置效果，品牌合作商品享有完全相同的平衡公式；Schema 納入 dataType ("real" \| "mock")、sourceName、sourceUrl 與 dataVerifiedAt 確保資訊真實性（UI 層對 mock 商品強制顯示「測試商品/模擬資料」標籤）：
+所有商品依「品類基準 \+ 個性化微調」配置效果，品牌合作商品享有完全相同的平衡公式；Schema 納入 dataType ("real" \| "mock")、sourceName、sourceUrl 與 dataVerifiedAt 確保資訊真實性（UI 層對 mock 商品強制顯示「測試商品/模擬資料」標籤）：【品類平衡區間與 QA 公平性審核依據】一般商品與品牌合作商品一律套用同一套預先定義之品類數值區間與定價級距規則（乾糧：飽食 \+25\~+28、水分 \-2\~-1、心情 \+2\~+6；主食罐：飽食 \+25\~+28、水分 \+20\~+22、心情 \+5\~+9；零食：飽食 \+8、水分 \-1、心情 \+14）；同一品類內之數值微調僅能依據真實營養特性與遊戲內積分定價級距配置，嚴禁以品牌合作身分、贊助金額或曝光合約作為效果計算參數。QA 審查商品設定檔時，須驗證所有商品效果皆落於對應品類合法區間且與定價級距一致，無任何品牌專屬例外加成。
 
 | 商品 ID (itemId) | 商品名稱 | 類別 | 合作標示 (dataType) | 定價 (積分) | 真實營養與成分標示 (nutrition & ingredients) | 遊戲效果 (gameEffect) |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
@@ -480,7 +488,7 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 2. **主房間與控制選項 (HomeScreen)：**  
    1. 頂部顯示四大狀態條與積分；底部為「背包餵食」、「商店」、「圖鑑」與「設定」。  
    2. **照顧保護與顯示設定：** 支援「暫時隱藏懸浮窗至通知列」、「貓咪顯示尺寸調整（小/中/大）」以及「照護暫停保護模式 (Care Pause)」。  
-3. **商店與商品詳情頁 (ShopScreen & ProductDetailModal)：**  
+3. **商店與商品詳情頁 (ShopScreen & ProductDetailModal)：**（階段邊界：Phase B 僅建立固定 Mock Data 之靜態 UI Prototype，不含購買與經濟結算；正式商品目錄、積分購買、背包、探索任務與 Remote Config 統一於 Phase D 上線。）  
    1. 列表支援分類篩選與「品牌合作 / 測試商品」清晰標示；詳情頁完整呈現「真實品牌、原料、粗蛋白/脂肪/水分分析、資料來源與更新日期」，以及獨立區塊的「遊戲回復數值」與「購買放入背包」按鈕。
 
 ## **8.E 存檔架構、遷移規範與自動化驗收劇本**
@@ -490,9 +498,9 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.23 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.24 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
-4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.23 未變更）
+4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -&gt; v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份档。（註：v2.1.5 \~ v2.1.24 未變更）
 
 ### **8.E.2 核心自動化驗收測試案例 (Vitest Acceptance Criteria)**
 
@@ -561,21 +569,36 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
 
 ### **8.E.3 Mood-Health 混合模式專屬自動化驗收測試清單 (TC-MH-01 \~ TC-MH-12)**
 
-4. **TC-MH-01（Mood 40+ 無扣血）：** 驗證 Mood \= 50 持續 7 天，Health 維持 100，below40Hours 與 below20Hours 均保持 0。  
-   5. **TC-MH-02（Mood 20\~39 緩慢扣血與 72h 門檻）：** 驗證 Mood \= 30 時，前 72 小時 Health 不扣減；超過 72 小時後每小時扣減 0.05 Health。  
-   6. **TC-MH-03（Mood 0\~19 扣血與 48h 門檻）：** 驗證 Mood \= 10 時，前 48 小時 Health 不扣減；超過 48 小時後每小時扣減 0.1 Health（不與 \-0.05 疊加）。  
-   7. **TC-MH-04（Health 40 安全地板 — 隔離測試）：** 在保持 Hunger \>= 60 且 Hydration \>= 60（確保不觸發飢餓/缺水扣血）的前提下，設定初始 Health \= 40.5 且 Mood \= 10 持續滿 48h 後再推進 10 小時，驗證當 Health 降至 40.0 的交點時 MoodHealthPenalty 扣減量強制歸 0，最終 Health 精確停在 40.0，絕不降至 39.95 或低於 40。  
-   8. **TC-MH-05（低心情扣血與飢餓扣血獨立疊加、40 地板邊界與 10 下限斷言）：** 測試起點設為 Day 1 `08:00`，初始狀態明確指定為 `health = 50.0`、`hunger = 10.0`（`< 20`，單獨觸發 `-2.0/hr` 飢餓扣血）、`hydration = 100.0`（全程維持 `>= 20`，隔離缺水影響以僅測 `hunger < 20`）、`mood = 10.0`（`< 20`），且低心情計時器起始位於門檻邊界 `lowMoodDuration = { below40Hours: 72.0, below20Hours: 48.0 }`（依 8.C.1 規則，推進時間使 `below20Hours > 48.0` 時立即自跨過 48 小時門檻後起算 `-0.1/hr`，非將等於 48 視為已超過門檻）。連續推進 **20.0 小時**（Day 1 `08:00` ➔ Day 2 `04:00`，結束時 `hydration = 34.0 >= 20`）：(1) **階段 1（0 \~ 10/2.1 ≈ 4.7619 小時）**：`health > 40` 區間內總扣血速度為 `-2.1/hr`，於約 `4.7619 小時` 精確抵達 `health = 40.0`；(2) **階段 2（4.7619 \~ 19.7619 小時，共 15.0 小時）**：抵達 `health = 40.0` 交點後，`MoodHealthPenalty` 立即停止（變為 `0`），僅 `hunger < 20` 繼續以 `-2.0/hr` 扣血，使 `health` 正常跌入 `CRITICAL`（`< 40`）並於累計約 `19.7619 小時` 精確抵達保護下限 `health = 10.0`；(3) **階段 3（19.7619 \~ 20.0 小時）**：斷言 `20.0 小時` 結束時 `health` 嚴格維持於保護下限 `10.0`，不得低於 `10`。  
-   9. **TC-MH-06（Mood 恢復時立即重置計時器）：** 驗證 below40Hours 累計至 50 小時後，透過撫摸使 Mood 升至 45，below40Hours 立即歸零；再次降至 30 時需重新累計 72 小時才開始扣血。  
-   10. **TC-MH-07（NATURAL\_RECOVERY 分級速度 Mood \>= 70）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 75 時，恢復速度為 \+2.5/hr。  
-   11. **TC-MH-08（NATURAL\_RECOVERY 分級速度 Mood 40\~69）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 50 時，恢復速度為 \+1.25/hr。  
-   12. **TC-MH-09（NATURAL\_RECOVERY 暫停 Mood \< 40）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 30 時，恢復暫停（+0/hr）。  
-   13. **TC-MH-10（離線模擬分段一致性）：** 驗證一次模擬 120 小時（跨越 72h 低心情門檻與 40 安全地板）與分 10 次每次 12 小時模擬，最終 Health、Mood、lowMoodDuration 結果誤差 \< 1e-9。  
-   14. **TC-MH-11（存檔與讀檔持久化）：** 驗證 lowMoodDuration（below40Hours 與 below20Hours）跨越存檔與重啟生命週期時完整保留並正確續算（以下數值為測試 fixture，非新增遊戲規則或調整門檻）：  
-       \- **測試前置狀態（Fixture）：** 測試起點設為 Day 1 08:00，health \= 100、mood \= 10（確保推進期間維持 Mood \< 20，兩項計時器同步累加）、hunger \= 80、hydration \= 80（隔離飢餓/缺水干擾），且 lowMoodDuration \= { below40Hours: 55.5, below20Hours: 23.5 }。  
-       \- **測試步驟與斷言：** (1) 建立上述初始狀態；(2) 寫入存檔；(3) 關閉並重新載入存檔；(4) 斷言讀檔後 below40Hours \=== 55.5 且 below20Hours \=== 23.5（誤差 \< 1e-9）；(5) 推進模擬時間 1.0 小時；(6) 斷言推進後 below40Hours \=== 56.5 且 below20Hours \=== 24.5（由原累積值續算而非歸零，誤差 \< 1e-9）。  
-       \- **分階段 Adapter 執行時程： Phase A** 以 JSON Adapter 執行 TC-MH-11（不要求提前實作 SQLite）；**Phase C** 待 SQLite Adapter 完成後，以相同測試案例與驗收條件執行；兩種 Adapter 皆須保證 lowMoodDuration 之序列化與反序列化結果完全一致。  
-   15. **TC-MH-12（夜間係數不影響低心情扣血）：** 驗證夜間 (23:00\~07:00) 觸發低心情扣血時，扣血速率維持 \-0.05/hr 或 \-0.1/hr，不受 0.3 時段係數減免。
+10. **TC-MH-01（Mood 40+ 無扣血）：** 驗證 Mood \= 50 持續 7 天，Health 維持 100，below40Hours 與 below20Hours 均保持 0。  
+11. **TC-MH-02（Mood 20\~39 緩慢扣血與 72h 門檻）：** 驗證 Mood \= 30 時，前 72 小時 Health 不扣減；超過 72 小時後每小時扣減 0.05 Health。  
+12. **TC-MH-03（Mood 0\~19 扣血與 48h 門檻）：** 驗證 Mood \= 10 時，前 48 小時 Health 不扣減；超過 48 小時後每小時扣減 0.1 Health（不與 \-0.05 疊加）。  
+13. **TC-MH-04（Health 40 安全地板 — 隔離測試）：** 在保持 Hunger \>= 60 且 Hydration \>= 60（確保不觸發飢餓/缺水扣血）的前提下，設定初始 Health \= 40.5 且 Mood \= 10 持續滿 48h 後再推進 10 小時，驗證當 Health 降至 40.0 的交點時 MoodHealthPenalty 扣減量強制歸 0，最終 Health 精確停在 40.0，絕不降至 39.95 或低於 40。  
+14. **TC-MH-05（低心情扣血與飢餓扣血獨立疊加、40 地板邊界與 10 下限斷言）：** 測試起點設為 Day 1 `08:00`，初始狀態明確指定為 `health = 50.0`、`hunger = 10.0`（`&lt; 20`，單獨觸發 `-2.0/hr` 飢餓扣血）、`hydration = 100.0`（全程維持 `&gt;= 20`，隔離缺水影響以僅測 `hunger &lt; 20`）、`mood = 10.0`（`&lt; 20`），且低心情計時器起始位於門檻邊界 `lowMoodDuration = { below40Hours: 72.0, below20Hours: 48.0 }`（依 8.C.1 規則，推進時間使 `below20Hours &gt; 48.0` 時立即自跨過 48 小時門檻後起算 `-0.1/hr`，非將等於 48 視為已超過門檻）。連續推進 **20.0 小時**（Day 1 `08:00` ➔ Day 2 `04:00`，結束時 `hydration = 34.0 &gt;= 20`）：(1) **階段 1（0 \~ 10/2.1 \&approx; 4.7619 小時）**：`health &gt; 40` 區間內總扣血速度為 `-2.1/hr`，於約 `4.7619 小時` 精確抵達 `health = 40.0`；(2) **階段 2（4.7619 \~ 19.7619 小時，共 15.0 小時）**：抵達 `health = 40.0` 交點後，`MoodHealthPenalty` 立即停止（變為 `0`），僅 `hunger &lt; 20` 繼續以 `-2.0/hr` 扣血，使 `health` 正常跌入 `CRITICAL`（`&lt; 40`）並於累計約 `19.7619 小時` 精確抵達保護下限 `health = 10.0`；(3) **階段 3（19.7619 \~ 20.0 小時）**：斷言 `20.0 小時` 結束時 `health` 嚴格維持於保護下限 `10.0`，不得低於 `10`。  
+15. **TC-MH-06（Mood 恢復時立即重置計時器）：** 驗證 below40Hours 累計至 50 小時後，透過撫摸使 Mood 升至 45，below40Hours 立即歸零；再次降至 30 時需重新累計 72 小時才開始扣血。  
+16. **TC-MH-07（NATURAL\_RECOVERY 分級速度 Mood \&gt;= 70）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \&gt;= 60, Hydration \&gt;= 60, Mood \= 75 時，恢復速度為 \+2.5/hr。  
+17. **TC-MH-08（NATURAL\_RECOVERY 分級速度 Mood 40\~69）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \&gt;= 60, Hydration \&gt;= 60, Mood \= 50 時，恢復速度為 \+1.25/hr。  
+18. **TC-MH-09（NATURAL\_RECOVERY 暫停 Mood \&lt; 40）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \&gt;= 60, Hydration \&gt;= 60, Mood \= 30 時，恢復暫停（+0/hr）。  
+19. **TC-MH-10（離線模擬分段一致性）：** 驗證一次模擬 120 小時（跨越 72h 低心情門檻與 40 安全地板）與分 10 次每次 12 小時模擬，最終 Health、Mood、lowMoodDuration 結果誤差 \&lt; 1e-9。  
+20. **TC-MH-11（存檔與讀檔持久化）：** 驗證 lowMoodDuration（below40Hours 與 below20Hours）跨越存檔與重啟生命週期時完整保留並正確續算（以下數值為測試 fixture，非新增遊戲規則或調整門檻）：  
+    \- **測試前置狀態（Fixture）：** 測試起點設為 Day 1 08:00，health \= 100、mood \= 10（確保推進期間維持 Mood \&lt; 20，兩項計時器同步累加）、hunger \= 80、hydration \= 80（隔離飢餓/缺水干擾），且 lowMoodDuration \= { below40Hours: 55.5, below20Hours: 23.5 }。  
+    \- **測試步驟與斷言：** (1) 建立上述初始狀態；(2) 寫入存檔；(3) 關閉並重新載入存檔；(4) 斷言讀檔後 below40Hours \=== 55.5 且 below20Hours \=== 23.5（誤差 \&lt; 1e-9）；(5) 推進模擬時間 1.0 小時；(6) 斷言推進後 below40Hours \=== 56.5 且 below20Hours \=== 24.5（由原累積值續算而非歸零，誤差 \&lt; 1e-9）。  
+    \- **分階段 Adapter 執行時程： Phase A** 以 JSON Adapter 執行 TC-MH-11（不要求提前實作 SQLite）；**Phase C** 待 SQLite Adapter 完成後，以相同測試案例與驗收條件執行；兩種 Adapter 皆須保證 lowMoodDuration 之序列化與反序列化結果完全一致。  
+21. **TC-MH-12（夜間係數不影響低心情扣血）：** 驗證夜間 (23:00\~07:00) 觸發低心情扣血時，扣血速率維持 \-0.05/hr 或 \-0.1/hr，不受 0.3 時段係數減免。  
+    1. **TC-MH-01（Mood 40+ 無扣血）：** 驗證 Mood \= 50 持續 7 天，Health 維持 100，below40Hours 與 below20Hours 均保持 0。  
+    2. **TC-MH-02（Mood 20\~39 緩慢扣血與 72h 門檻）：** 驗證 Mood \= 30 時，前 72 小時 Health 不扣減；超過 72 小時後每小時扣減 0.05 Health。  
+    3. **TC-MH-03（Mood 0\~19 扣血與 48h 門檻）：** 驗證 Mood \= 10 時，前 48 小時 Health 不扣減；超過 48 小時後每小時扣減 0.1 Health（不與 \-0.05 疊加）。  
+    4. **TC-MH-04（Health 40 安全地板 — 隔離測試）：** 在保持 Hunger \>= 60 且 Hydration \>= 60（確保不觸發飢餓/缺水扣血）的前提下，設定初始 Health \= 40.5 且 Mood \= 10 持續滿 48h 後再推進 10 小時，驗證當 Health 降至 40.0 的交點時 MoodHealthPenalty 扣減量強制歸 0，最終 Health 精確停在 40.0，絕不降至 39.95 或低於 40。  
+    5. **TC-MH-05（低心情扣血與飢餓扣血獨立疊加、40 地板邊界與 10 下限斷言）：** 測試起點設為 Day 1 `08:00`，初始狀態明確指定為 `health = 50.0`、`hunger = 10.0`（`< 20`，單獨觸發 `-2.0/hr` 飢餓扣血）、`hydration = 100.0`（全程維持 `>= 20`，隔離缺水影響以僅測 `hunger < 20`）、`mood = 10.0`（`< 20`），且低心情計時器起始位於門檻邊界 `lowMoodDuration = { below40Hours: 72.0, below20Hours: 48.0 }`（依 8.C.1 規則，推進時間使 `below20Hours > 48.0` 時立即自跨過 48 小時門檻後起算 `-0.1/hr`，非將等於 48 視為已超過門檻）。連續推進 **20.0 小時**（Day 1 `08:00` ➔ Day 2 `04:00`，結束時 `hydration = 34.0 >= 20`）：(1) **階段 1（0 \~ 10/2.1 ≈ 4.7619 小時）**：`health > 40` 區間內總扣血速度為 `-2.1/hr`，於約 `4.7619 小時` 精確抵達 `health = 40.0`；(2) **階段 2（4.7619 \~ 19.7619 小時，共 15.0 小時）**：抵達 `health = 40.0` 交點後，`MoodHealthPenalty` 立即停止（變為 `0`），僅 `hunger < 20` 繼續以 `-2.0/hr` 扣血，使 `health` 正常跌入 `CRITICAL`（`< 40`）並於累計約 `19.7619 小時` 精確抵達保護下限 `health = 10.0`；(3) **階段 3（19.7619 \~ 20.0 小時）**：斷言 `20.0 小時` 結束時 `health` 嚴格維持於保護下限 `10.0`，不得低於 `10`。  
+    6. **TC-MH-06（Mood 恢復時立即重置計時器）：** 驗證 below40Hours 累計至 50 小時後，透過撫摸使 Mood 升至 45，below40Hours 立即歸零；再次降至 30 時需重新累計 72 小時才開始扣血。  
+    7. **TC-MH-07（NATURAL\_RECOVERY 分級速度 Mood \>= 70）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 75 時，恢復速度為 \+2.5/hr。  
+    8. **TC-MH-08（NATURAL\_RECOVERY 分級速度 Mood 40\~69）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 50 時，恢復速度為 \+1.25/hr。  
+    9. **TC-MH-09（NATURAL\_RECOVERY 暫停 Mood \< 40）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 30 時，恢復暫停（+0/hr）。  
+    10. **TC-MH-10（離線模擬分段一致性）：** 驗證一次模擬 120 小時（跨越 72h 低心情門檻與 40 安全地板）與分 10 次每次 12 小時模擬，最終 Health、Mood、lowMoodDuration 結果誤差 \< 1e-9。  
+    11. **TC-MH-11（存檔與讀檔持久化）：** 驗證 lowMoodDuration（below40Hours 與 below20Hours）跨越存檔與重啟生命週期時完整保留並正確續算（以下數值為測試 fixture，非新增遊戲規則或調整門檻）：  
+        \- **測試前置狀態（Fixture）：** 測試起點設為 Day 1 08:00，health \= 100、mood \= 10（確保推進期間維持 Mood \< 20，兩項計時器同步累加）、hunger \= 80、hydration \= 80（隔離飢餓/缺水干擾），且 lowMoodDuration \= { below40Hours: 55.5, below20Hours: 23.5 }。  
+        \- **測試步驟與斷言：** (1) 建立上述初始狀態；(2) 寫入存檔；(3) 關閉並重新載入存檔；(4) 斷言讀檔後 below40Hours \=== 55.5 且 below20Hours \=== 23.5（誤差 \< 1e-9）；(5) 推進模擬時間 1.0 小時；(6) 斷言推進後 below40Hours \=== 56.5 且 below20Hours \=== 24.5（由原累積值續算而非歸零，誤差 \< 1e-9）。  
+        \- **分階段 Adapter 執行時程： Phase A** 以 JSON Adapter 執行 TC-MH-11（不要求提前實作 SQLite）；**Phase C** 待 SQLite Adapter 完成後，以相同測試案例與驗收條件執行；兩種 Adapter 皆須保證 lowMoodDuration 之序列化與反序列化結果完全一致。  
+    12. **TC-MH-12（夜間係數不影響低心情扣血）：** 驗證夜間 (23:00\~07:00) 觸發低心情扣血時，扣血速率維持 \-0.05/hr 或 \-0.1/hr，不受 0.3 時段係數減免。
 
 # **9\. 產品範圍與非目標 (Scope & Non-Goals)**
 
