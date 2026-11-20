@@ -1,14 +1,12 @@
-# **拾暖伴伴 (shinuan) AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.19)**
+# **拾暖伴伴 (shinuan) AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.20)**
 
-**【版本資訊】** Master PRD v2.1.19（2026-11-20 修訂稿）  
+**【版本資訊】** Master PRD v2.1.20（2026-11-20 修訂稿）  
 **【本次修訂重點】**  
-1\. 正式專案名稱統一為「拾暖伴伴 (shinuan)」。  
-2\. 將 Monorepo 根目錄由 ai-virtual-pet/ 調整為 shinuan/，並更新專案目標目錄結構與 Phase A 初期建立範圍。  
-3\. 明確區分 Phase A、Phase B 及 Future Phase 的實作範圍（將原 local-cli 的 Phase 0 統一修正為 Phase A）。  
-4\. 遠端設定來源改採 Remote Config Provider 抽象，不綁定 GitLab Raw 或 GitHub Raw 等特定服務。  
-5\. 新增 5.4 AI 協作與工程管理規範，定義 PO、AI Manager、Architect、Developer、QA、Reviewer 的職責、標準工作流程、變更治理及外部 AI 使用邊界。  
-6\. 統一使用根目錄 tests/ 管理 Vitest 單元、整合及長時間模擬測試，並以 test-results/ 保存測試輸出及 QA 驗收證據。  
-**【核心規則保留聲明】** 本次修訂僅調整專案識別、工程目錄、開發階段描述及 AI 協作治理，不變更既有遊戲核心數值、計算公式、基因機率、健康保護規則、Recovery 機制、MoodHealthPenalty、經濟平衡及既有驗收測試預期結果。
+1\. 補回遺漏之 5.2 技術選型與跨平台呈現契約 (PetViewModel) 章節標題，維持 5.1 \~ 5.4 章節結構完整連續。  
+2\. 統一 5.1、5.2、10.2 與第 7 節之 Remote Config Provider 實作階段定義（Phase A 僅本機 JSON 載入與驗證、Phase B\~C 不要求實作、Phase D 配合商店與品牌商品目錄導入實作）。  
+3\. 於 5.4.2 明確定義 AI Manager 由主要 Claude Agent 擔任並由根目錄 CLAUDE.md 規範，.claude/agents/ 僅存放 Subagents，無需額外建立 manager.md。  
+4\. 於 5.4.2 與 5.4.5 明確定義 Phase A 初期 QA 獨立性採「流程與職責隔離」（非作業系統權限或檔案系統隔離），並保留未來導入 Git Worktree 強化隔離之彈性。  
+**【核心規則保留聲明】** 本次修訂僅修正章節結構、階段對齊與 AI 協作治理細節，不變更既有遊戲核心數值、計算公式、基因機率、健康保護規則、Recovery 機制、MoodHealthPenalty、經濟平衡及既有驗收測試預期結果。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -162,8 +160,8 @@
    1. GameRepository 介面。  
    2. PetViewModel 契約。  
    3. GameEvent 結構。  
-6. **【Phase A 不實作 / Future Phase】：**  
-   1. 遠端設定檔下載及更新機制。  
+6. **【Phase A 不實作 / 後續階段】：**  
+   1. 遠端設定檔下載及更新機制（Phase D 導入）。  
    2. Android WindowManager 原生模組。  
    3. iOS WidgetKit。  
    4. SQLite。  
@@ -172,9 +170,9 @@
    7. LLM API。  
    8. **明確禁止在 Game Core 內使用：**`window` / `document`（Browser 專屬）、`fs` / `path` / `process`（Node.js 專屬）、`Date.now()`（導致時間不可控）、`Math.random()`（破壞固定 Seed 重現性）、React / React Native、Kotlin / Swift API 以及直接發起網路請求。  
 7. **設定檔外部載入與驗證 (Config Loader)：**  
-   1. **Phase A（Windows 本機驗證）：** config-loader 直接讀取專案內 content/ 目錄之靜態 JSON，執行 Schema 驗證後注入 Game Core。Game Core 不負責讀取檔案或解析外部資料來源。  
-   2. **Future Phase（遠端設定擴充）：** config-loader 預留 Remote Config Provider 介面，支援遠端版本檢查、設定檔下載、本機快取、Schema 驗證及載入失敗時的 Fallback 機制。  
-   3. **Provider 解耦原則：**  
+   1. **Phase A（Windows 本機驗證）：** 僅實作本機 JSON 載入及 Schema 驗證（config-loader 直接讀取專案內 content/ 目錄之靜態 JSON，執行 Schema 驗證後注入 Game Core），不實作遠端設定下載。Game Core 不負責讀取檔案或解析外部資料來源。  
+   2. **Phase B \~ C：** 不要求實作 Remote Config Provider。  
+   3. **Phase D（配合商店與品牌商品目錄導入）：** 實作 Remote Config Provider，必須支援遠端版本檢查、設定檔下載、本機快取、Schema 驗證及載入失敗時的 Fallback 機制；遠端服務平台不預先指定，由實際部署架構決定。  
       1. 遠端設定來源不得與 Game Core 耦合。  
       2. Game Core 只接受已通過 Schema 驗證的設定物件。  
       3. Remote Config Provider 負責處理遠端資料來源、版本檢查、下載及快取。  
@@ -183,12 +181,14 @@
 8. **離線優先 (Offline-first) 與免防作弊設計：** 個人陪伴養成無 PvP 與排行榜，不建置伺服器結算；僅保留存檔版本遷移（Migration）、格式防損驗證與本機每日領取防重機制。  
 9. **呈現與存檔分離：** 存檔僅保存基因、數值、記憶與時間戳，不儲存動畫影格；統一由 BehaviorEngine 輸出單一標準結構 BehaviorDecision，再由 GameEngine 轉換為跨平台唯讀契約 PetViewModel 交由各平台 Renderer 呈現。
 
+## **5.2 技術選型與跨平台呈現契約 (PetViewModel)**
+
 * 
 
 | 架構層級 | 技術選型 | 開發階段與責任 |
 | :---- | :---- | :---- |
 | 遊戲核心 (100% 共用) | 純 TypeScript (packages/game-core) | **Phase A 必須實作。**負責品種傳承、性格、需求與健康平衡、TimeEngine、BehaviorEngine 與經濟規則，零平台依賴。 |
-| 設定載入與契約層 | TypeScript (config-loader / contracts) | **Phase A** 實作本機 JSON 載入、Schema 驗證與跨模組資料契約。遠端 Provider 延後至 **Future Phase**。 |
+| 設定載入與契約層 | TypeScript (config-loader / contracts) | **Phase A** 實作本機 JSON 載入、Schema 驗證與跨模組資料契約。遠端 Provider 配合商店與品牌商品目錄於 **Phase D** 導入（Phase B \~ C 不要求實作）。 |
 | 跨平台 UI 層 | React Native \+ TypeScript | **Phase B** 建立跨平台 UI 骨架及 App 主房間、領養、商店、商品成分頁與設定介面。 |
 | Android 原生適配器 | Kotlin (WindowManager) | **Phase B** 驗證 Android 透明懸浮窗、生命週期管理、觸控拖曳、重力物理與系統電量事件回傳。 |
 | iOS 原生適配器 | Swift / SwiftUI (WidgetKit) | **Phase B** 驗證桌面 Widget 狀態展示、App Intents 快捷操作佇列與 App Group 資料共享。 |
@@ -245,10 +245,10 @@
 ### **5.4.2 角色與職責**
 
 1. **PO (Product Owner)：** 負責產品需求、功能優先順序及範圍決策；核准重大架構、遊戲規則及規格變更；決定是否接受新增功能及技術債；負責最終驗收。  
-2. **AI Manager (秘書)：** 接收 PO 提出的需求；讀取 Master PRD、工程規範及既有任務紀錄；將需求拆解為可執行的開發任務；根據任務性質指派 Architect、Developer、QA 及 Reviewer；管理任務狀態、依賴關係、交付成果及阻塞問題；整合各角色成果並向 PO 回報；不得自行修改已核准的核心遊戲規則、數值及重大架構決策。  
+2. **AI Manager (秘書)：** 接收 PO 提出的需求；讀取 Master PRD、工程規範及既有任務紀錄；將需求拆解為可執行的開發任務；根據任務性質指派 Architect、Developer、QA 及 Reviewer；管理任務狀態、依賴關係、交付成果及阻塞問題；整合各角色成果並向 PO 回報；不得自行修改已核准的核心遊戲規則、數值及重大架構決策。AI Manager 為主要 Claude Agent，其工作規範由根目錄 CLAUDE.md 定義；.claude/agents/ 僅存放由 AI Manager 依任務需求呼叫的 Subagents（Architect、Developer、QA、Reviewer），AI Manager 不需要額外建立 manager.md Subagent。  
 3. **Architect (架構師)：** 負責技術架構分析及設計；評估技術方案、模組依賴與實作風險；提供架構決策建議及必要文件；涉及重大架構變更時，必須先提交 PO 核准。  
 4. **Developer (工程師)：** 依照已核准任務修改 VS Code 專案程式碼；遵循既有架構、型別、程式碼風格及測試規範；執行必要的開發階段驗證；提供修改檔案、實作內容及交付紀錄；不得自行擴大任務範圍或變更未授權的核心規則。  
-5. **QA (品質驗證)：** 獨立執行單元、整合及長時間模擬測試；依照任務驗收條件驗證實際執行結果；提供可追溯的測試紀錄及測試結果；發現問題時建立缺陷紀錄並退回處理；QA 不得自行修改正式 Game Core 程式碼（必要測試程式及測試資料的調整應限於核准的測試範圍）；Developer 自行執行的開發驗證不得取代 QA 獨立驗收。  
+5. **QA (品質驗證)：** 獨立執行單元、整合及長時間模擬測試；依照任務驗收條件驗證實際執行結果；提供可追溯的測試紀錄及測試結果；發現問題時建立缺陷紀錄並退回處理；QA 不得自行修改正式 Game Core 程式碼（必要測試程式及測試資料的調整應限於核准的測試範圍）；Developer 自行執行的開發驗證不得取代 QA 獨立驗收。Phase A 初期 QA 獨立性採流程與職責隔離，不代表作業系統權限或檔案系統隔離；QA 必須依據核准的驗收條件自行執行測試，不得修改正式 Game Core 程式碼，亦不得僅引用 Developer 的測試結果作為通過證據；未來如有必要，可透過 Git Worktree 或其他隔離機制強化 QA 作業獨立性。  
 6. **Reviewer (審查者)：** 檢查程式碼品質、架構一致性及潛在風險；檢查修改是否符合 PRD、工程規範及任務驗收條件；確認測試覆蓋及錯誤處理是否足夠；提供審查結論及必要修改意見。
 
 ### **5.4.3 標準 AI 工作流程**
@@ -279,7 +279,7 @@ PO 提出需求 ➔ AI Manager 分析需求及拆解任務 ➔ Architect 技術�
 11. **Git 操作保護：** git commit、push、reset、clean 等可能影響版本歷史或工作目錄的操作，必須依 PO 授權執行，不得擅自丟棄或覆蓋未提交的使用者修改。  
 12. **依賴套件保護：** 安裝、移除或更新依賴套件前，應先確認必要性、版本及影響範圍，依專案授權流程執行。  
 13. **檔案保護：** 不得未經確認覆蓋既有設定檔、PRD 或其他正式文件；修改前應確認目前版本及工作目錄狀態。  
-14. **測試獨立性：** Developer 的開發驗證不能取代 QA 驗收；QA 的測試結果必須可追溯。  
+14. **測試獨立性：** Developer 的開發驗證不能取代 QA 驗收；QA 的測試結果必須可追溯（Phase A 初期採流程與職責隔離，未來可視需要導入 Git Worktree 等環境隔離機制）。  
 15. **決策紀錄：** 重大架構及產品決策應保存於 docs/decisions/，避免不同 AI Agent 在不同工作階段產生互相矛盾的假設。
 
 ### **5.4.6 外部 AI 工具協作**
@@ -493,9 +493,9 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.19 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.20 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
-4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.19 未變更）
+4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.20 未變更）
 
 ### **8.E.2 核心自動化驗收測試案例 (Vitest Acceptance Criteria)**
 
@@ -596,7 +596,7 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
 
 ## **10.2 異常降級與 Fallback 策略**
 
-1. **遠端設定檔失敗：** 遠端設定載入功能僅適用於已導入 Remote Config Provider 的未來階段：  
+1. **遠端設定檔失敗：** 遠端設定載入功能於 Phase D 配合商店與品牌商品目錄導入 Remote Config Provider 後啟用（Phase A \~ C 不實作遠端下載）：  
    1. 網路中斷時，使用已驗證的本機快取設定。  
       2. 遠端 JSON 下載失敗或 Schema 驗證失敗時，不得將未驗證資料注入 Game Core。  
       3. 本機快取不存在或無法通過驗證時，使用內建且已驗證的預設設定檔。  
