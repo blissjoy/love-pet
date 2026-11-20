@@ -1,12 +1,11 @@
-# **拾暖伴伴 (shinuan) AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.20)**
+# **拾暖伴伴 (shinuan) AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.21)**
 
-**【版本資訊】** Master PRD v2.1.20（2026-11-20 修訂稿）  
+**【版本資訊】** Master PRD v2.1.21（2026-11-20 修訂稿）  
 **【本次修訂重點】**  
-1\. 補回遺漏之 5.2 技術選型與跨平台呈現契約 (PetViewModel) 章節標題，維持 5.1 \~ 5.4 章節結構完整連續。  
-2\. 統一 5.1、5.2、10.2 與第 7 節之 Remote Config Provider 實作階段定義（Phase A 僅本機 JSON 載入與驗證、Phase B\~C 不要求實作、Phase D 配合商店與品牌商品目錄導入實作）。  
-3\. 於 5.4.2 明確定義 AI Manager 由主要 Claude Agent 擔任並由根目錄 CLAUDE.md 規範，.claude/agents/ 僅存放 Subagents，無需額外建立 manager.md。  
-4\. 於 5.4.2 與 5.4.5 明確定義 Phase A 初期 QA 獨立性採「流程與職責隔離」（非作業系統權限或檔案系統隔離），並保留未來導入 Git Worktree 強化隔離之彈性。  
-**【核心規則保留聲明】** 本次修訂僅修正章節結構、階段對齊與 AI 協作治理細節，不變更既有遊戲核心數值、計算公式、基因機率、健康保護規則、Recovery 機制、MoodHealthPenalty、經濟平衡及既有驗收測試預期結果。
+1\. 修正 4.4 日常照護 描述，明確區分基礎免費食物/飲水之零付費門檻供應與「每日一次登入標準免費照護方案（3 份免費乾糧 \+ 4 份免費飲水 \+ 3 次互動）」之最低照護負擔基準，消除與 2.1、8.C.2 及 TC-09 A/B/C 之語意歧義。  
+2\. 統一 5.1 與 5.3 之 Config Loader 讀取路徑規格，明定載入範圍涵蓋 content/ 及其所有版本化子目錄（genetics/、traits/、behavior-rules/、products/），不得僅掃描根目錄。  
+3\. 修正文件章節層級結構，將 8.E.3 Mood-Health 混合模式專屬自動化驗收測試清單 (TC-MH-01 \~ TC-MH-12) 完整移至 9\. 產品範圍與非目標 (Scope & Non-Goals) 之前，歸位於 8.E 節下。  
+**【核心規則保留聲明】** 本次修訂僅修正描述一致性、設定檔載入範圍與章節結構，不變更既有遊戲核心數值、計算公式、基因機率、健康保護規則、Recovery 機制、MoodHealthPenalty、經濟平衡及既有驗收測試預期結果。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -142,7 +141,7 @@
 
 ## **4.4 照護與商店探索系統**
 
-* **日常照護：** 每日免費提供無限量基礎乾糧與過濾飲用水，搭配摸頭與玩耍互動即可維持健康。  
+* **日常照護：** 每日免費提供基礎乾糧與過濾飲用水（0 積分、不設付費門檻，支援正常早晚多次登入與緊急救援補給食水）；以「每日一次登入之標準免費照護方案（3 份免費乾糧 \+ 4 份免費飲水 \+ 3 次摸頭與玩耍互動）」作為最低照護負擔基準，即足以長期維持貓咪基本健康，不得將免費照護設計成付費門檻，亦不得因未購買品牌商品而受到不可逆懲罰。  
 * **原生廣告商店：** 玩家累積積分後可選購一般罐頭/零食或品牌合作商品，點擊商品詳情可查看真實成分與營養分析；購買後的商品進入背包，由玩家自主選擇使用時機。
 
 # **5\. 技術架構與工程原則 (Monorepo \+ Platform Decoupling)**
@@ -152,7 +151,7 @@
 1. **嚴格平台解耦 (Platform Decoupling)：** Game Core 必須為純 TypeScript 跨平台模組，所有時間、隨機數、存檔、外部設定與平台資訊均透過依賴注入（Dependency Injection）或外部輸入提供，必須能在 Windows Node.js 環境獨立執行與測試。  
 2. **【Phase A 必須實作】：**  
    1. 純 TypeScript Game Core。  
-   2. 本機 Config Loader（讀取 `content/*.json`，負責檔案讀取與 Schema 驗證；Game Core 只接受已驗證的設定物件）。  
+   2. 本機 Config Loader（讀取 content/ 目錄及其子目錄中的版本化 JSON 設定檔，負責檔案讀取、完整性檢查與 Schema 驗證；Game Core 只接受已通過驗證的設定物件）。  
 3. Clock / RandomGenerator 依賴注入。  
    1. 防損 JSON 存檔。  
 4. Vitest 單元、整合及長時間模擬驗收測試。  
@@ -170,7 +169,7 @@
    7. LLM API。  
    8. **明確禁止在 Game Core 內使用：**`window` / `document`（Browser 專屬）、`fs` / `path` / `process`（Node.js 專屬）、`Date.now()`（導致時間不可控）、`Math.random()`（破壞固定 Seed 重現性）、React / React Native、Kotlin / Swift API 以及直接發起網路請求。  
 7. **設定檔外部載入與驗證 (Config Loader)：**  
-   1. **Phase A（Windows 本機驗證）：** 僅實作本機 JSON 載入及 Schema 驗證（config-loader 直接讀取專案內 content/ 目錄之靜態 JSON，執行 Schema 驗證後注入 Game Core），不實作遠端設定下載。Game Core 不負責讀取檔案或解析外部資料來源。  
+   1. **Phase A（Windows 本機驗證）：** 僅實作本機 JSON 載入及 Schema 驗證（config-loader 直接讀取專案內 content/ 目錄及其子目錄（genetics/、traits/、behavior-rules/、products/）之版本化靜態 JSON，執行 Schema 驗證後注入 Game Core），不實作遠端設定下載。Game Core 不負責讀取檔案或解析外部資料來源。  
    2. **Phase B \~ C：** 不要求實作 Remote Config Provider。  
    3. **Phase D（配合商店與品牌商品目錄導入）：** 實作 Remote Config Provider，必須支援遠端版本檢查、設定檔下載、本機快取、Schema 驗證及載入失敗時的 Fallback 機制；遠端服務平台不預先指定，由實際部署架構決定。  
       1. 遠端設定來源不得與 Game Core 耦合。  
@@ -232,7 +231,7 @@
 4. **任務管理：** tasks/backlog/（尚未開始）、tasks/in-progress/（正在執行）、tasks/review/（等待 QA 或 Reviewer 審查）、tasks/completed/（已完成並通過驗收）、tasks/blocked/（因需求、技術或外部依賴而暫停）。  
 5. **核心套件 (packages/)：** game-core/（純 TypeScript 遊戲核心，包含 domain、engine 與 ports）、contracts/（跨模組資料契約，包含 Command、Event、ViewModel 與 Save Schema）、config-loader/（設定檔載入、Schema 驗證及 Fallback 模組）。  
 6. **應用程式 (apps/)：** local-cli/（Phase A Windows 本機 CLI 測試介面）、mobile/（Phase B 後續建立的 React Native 手機端專案，包含 Android、iOS 與共用 src）。  
-7. **設定與素材 (content/ 與 assets/)：** content/ 放置版本化靜態設定檔；assets/ 依 Phase B 需求逐步建立貓咪圖層素材、動畫、圖示及音效。  
+7. **設定與素材 (content/ 與 assets/)：** content/ 放置版本化靜態設定檔（Config Loader 載入範圍應涵蓋 genetics/、traits/、behavior-rules/、products/ 等子目錄，不得僅掃描 content/ 根目錄）；assets/ 依 Phase B 需求逐步建立貓咪圖層素材、動畫、圖示及音效。  
 8. **測試管理（測試程式與測試結果分離）：** 統一於根目錄 tests/ 保存可執行的 Vitest 測試程式碼（tests/unit/ 單元測試、tests/integration/ 跨模組整合測試、tests/simulation/ 365 天長時間模擬及其他時間序列驗證）；test-results/ 專責保存測試執行結果、模擬輸出、QA 報告及驗收證據，不得將測試報告混入測試程式碼目錄。  
 9. **Phase A 初期目錄建立範圍：** 優先建立根目錄工程設定、packages/game-core/、packages/contracts/、packages/config-loader/、apps/local-cli/、content/、tests/、test-results/、docs/ 及必要的 AI Agent 工作規範。apps/mobile/、完整 assets/ 及其他 Future Phase 目錄應依照實際開發階段建立，不得因目錄樹列出而提前擴大 Phase A 工作範圍。
 
@@ -493,9 +492,9 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.20 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.21 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
-4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.20 未變更）
+4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.21 未變更）
 
 ### **8.E.2 核心自動化驗收測試案例 (Vitest Acceptance Criteria)**
 
@@ -562,8 +561,6 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
         \- **Day 3 08:00 照護後：** Hunger \= 100、Hydration \= 100、Mood \= 80.0、Health ≈ 88.3333。  
         \- **Day 3 08:00 \~ 12:40（14/3 h，日間）：** 需求均 \>= 60、Mood \>= 70 (+2.5/hr) 回血 \+11.6667 ➔ 於 **Day 3 12:40** 精確達成 **Health \= 100.0**（此時 Hunger ≈ 81.33、Hydration ≈ 81.33、Mood ≈ 74.17），立即 Clamp 為 100 並重置為 RecoveryState \= "NORMAL"、recoveryBoostAccumulatedHours \= 0。
 
-# **9\. 產品範圍與非目標 (Scope & Non-Goals)**
-
 ### **8.E.3 Mood-Health 混合模式專屬自動化驗收測試清單 (TC-MH-01 \~ TC-MH-12)**
 
 4. **TC-MH-01（Mood 40+ 無扣血）：** 驗證 Mood \= 50 持續 7 天，Health 維持 100，below40Hours 與 below20Hours 均保持 0。  
@@ -576,10 +573,9 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
    11. **TC-MH-08（NATURAL\_RECOVERY 分級速度 Mood 40\~69）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 50 時，恢復速度為 \+1.25/hr。  
    12. **TC-MH-09（NATURAL\_RECOVERY 暫停 Mood \< 40）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 30 時，恢復暫停（+0/hr）。  
    13. **TC-MH-10（離線模擬分段一致性）：** 驗證一次模擬 120 小時（跨越 72h 低心情門檻與 40 安全地板）與分 10 次每次 12 小時模擬，最終 Health、Mood、lowMoodDuration 結果誤差 \< 1e-9。  
-   14. **TC-MH-11（存檔與讀檔持久化）：** 驗證 below40Hours \= 55.5 寫入 Save JSON / SQLite 後重新載入，模擬繼續從 55.5 小時累加而非 0。  
-   15. **TC-MH-12（夜間係數不影響低心情扣血）：** 驗證夜間 (23:00\~07:00) 觸發低心情扣血時，扣血速率維持 \-0.05/hr 或 \-0.1/hr，不受 0.3 時段係數減免。
+   14. **TC-MH-12（夜間係數不影響低心情扣血）：** 驗證夜間 (23:00\~07:00) 觸發低心情扣血時，扣血速率維持 \-0.05/hr 或 \-0.1/hr，不受 0.3 時段係數減免。
 
-## **9.1 MVP 明確納入 (Phase A \~ D)**
+# **9\. 產品範圍與非目標 (Scope & Non-Goals)**
 
 20. 單隻貓咪領養與 7 層確定性外觀生成、三層性格行為決策、0.25 小時步進離線時間差補算、健康救援狀態機、無懲罰 Care Pause 照護暫停模式、防損本機存檔與 Save Migration、Android 全域懸浮窗、iOS App 內養成與狀態 Widget、積分商店與商品營養分析探索。
 
