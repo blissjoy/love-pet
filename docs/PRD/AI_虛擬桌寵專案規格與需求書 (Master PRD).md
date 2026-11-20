@@ -1,9 +1,9 @@
-# **拾暖伴伴 (shinuan) AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.22)**
+# **拾暖伴伴 (shinuan) AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.23)**
 
-**【版本資訊】** Master PRD v2.1.22（2026-11-20 修訂稿）  
+**【版本資訊】** Master PRD v2.1.23（2026-11-20 修訂稿）  
 **【本次修訂重點】**  
-1\. 恢復 8.E.3 中原本被誤刪的獨立驗收測試 TC-MH-11（存檔與讀檔持久化），置於 TC-MH-10 與 TC-MH-12 之間，保留 TC-MH-01 \~ TC-MH-10 與 TC-MH-12 原編號及測試內容不變，並同步於該測試中一併驗證 lowMoodDuration.below20Hours 之持久化保存（呼應 8.A.1、8.C.1 與 8.E.1）。  
-**【核心規則保留聲明】** 本次修訂僅補回既有驗收測試案例並同步版本註記，不變更既有遊戲核心數值、計算公式、基因機率、健康保護規則、Recovery 機制、MoodHealthPenalty、經濟平衡及既有驗收測試預期結果。
+1\. 依 PET-27 審查補強 8.E.3 之 TC-MH-11（存檔與讀檔持久化）可執行驗收規格：明定非零測試 fixture（mood \= 10、hunger \= 80、hydration \= 80、lowMoodDuration \= { below40Hours: 55.5, below20Hours: 23.5 }）、6 項明確測試步驟與推進 1.0 小時後之精確斷言值（56.5 / 24.5），並明確區分 Phase A（JSON Adapter）與 Phase C（SQLite Adapter）之執行時程與序列化一致性要求。  
+**【核心規則保留聲明】** 本次修訂僅細化 TC-MH-11 測試 fixture 與分階段執行時程並同步版本註記，不變更既有遊戲核心數值、計算公式、基因機率、健康保護規則、Recovery 機制、MoodHealthPenalty、經濟平衡及既有驗收測試預期結果。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -490,9 +490,9 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.22 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.23 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
-4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.22 未變更）
+4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.23 未變更）
 
 ### **8.E.2 核心自動化驗收測試案例 (Vitest Acceptance Criteria)**
 
@@ -571,7 +571,10 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
    11. **TC-MH-08（NATURAL\_RECOVERY 分級速度 Mood 40\~69）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 50 時，恢復速度為 \+1.25/hr。  
    12. **TC-MH-09（NATURAL\_RECOVERY 暫停 Mood \< 40）：** 驗證處於 NATURAL\_RECOVERY 且 Hunger \>= 60, Hydration \>= 60, Mood \= 30 時，恢復暫停（+0/hr）。  
    13. **TC-MH-10（離線模擬分段一致性）：** 驗證一次模擬 120 小時（跨越 72h 低心情門檻與 40 安全地板）與分 10 次每次 12 小時模擬，最終 Health、Mood、lowMoodDuration 結果誤差 \< 1e-9。  
-   14. **TC-MH-11（存檔與讀檔持久化）：** 驗證 below40Hours \= 55.5 寫入 Save JSON / SQLite 後重新載入，模擬繼續從 55.5 小時累加，而非從 0 重新計算（並依 8.A.1、8.C.1 與 8.E.1 定義一併驗證 lowMoodDuration.below20Hours 寫入與重載後完整保留、不歸零）。  
+   14. **TC-MH-11（存檔與讀檔持久化）：** 驗證 lowMoodDuration（below40Hours 與 below20Hours）跨越存檔與重啟生命週期時完整保留並正確續算（以下數值為測試 fixture，非新增遊戲規則或調整門檻）：  
+       \- **測試前置狀態（Fixture）：** mood \= 10（確保推進期間維持 Mood \< 20，兩項計時器同步累加）、hunger \= 80、hydration \= 80（隔離飢餓/缺水干擾），且 lowMoodDuration \= { below40Hours: 55.5, below20Hours: 23.5 }。  
+       \- **測試步驟與斷言：** (1) 建立上述初始狀態；(2) 寫入存檔；(3) 關閉並重新載入存檔；(4) 斷言讀檔後 below40Hours \=== 55.5 且 below20Hours \=== 23.5（誤差 \< 1e-9）；(5) 推進模擬時間 1.0 小時；(6) 斷言推進後 below40Hours \=== 56.5 且 below20Hours \=== 24.5（由原累積值續算而非歸零，誤差 \< 1e-9）。  
+       \- **分階段 Adapter 執行時程： Phase A** 以 JSON Adapter 執行 TC-MH-11（不要求提前實作 SQLite）；**Phase C** 待 SQLite Adapter 完成後，以相同測試案例與驗收條件執行；兩種 Adapter 皆須保證 lowMoodDuration 之序列化與反序列化結果完全一致。  
    15. **TC-MH-12（夜間係數不影響低心情扣血）：** 驗證夜間 (23:00\~07:00) 觸發低心情扣血時，扣血速率維持 \-0.05/hr 或 \-0.1/hr，不受 0.3 時段係數減免。
 
 # **9\. 產品範圍與非目標 (Scope & Non-Goals)**
