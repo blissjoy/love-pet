@@ -1,6 +1,14 @@
-# **AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.18)**
+# **拾暖伴伴 (shinuan) AI 虛擬桌寵專案規格與需求書 (Master PRD v2.1.19)**
 
-**【版本資訊】** Master PRD v2.1.18（2026-11-19 定稿）｜修訂重點：依 PET-23 審查刪除 8.C.1 開頭重複出現的第二份【指令與時間模擬執行順序 (P1-4)】定義（僅保留一份），並將 8.C.1【連續閾值交點切割與時間區段計算】之精度描述由「在數學上 100% 完全一致（誤差 \< 1e-9）」修正為「最終結果一致，數值誤差小於 1e-9」，與 TC-03、TC-MH-10 驗收標準一致；完整保留每日 3 糧 \+ 4 水 \+ 3 互動、Hydration 衰退 73.6、Health \= 40 / 10 保護規則、TC-MH-05、TC-09 B/C 及所有既有 Recovery / MoodHealthPenalty 公式不變。
+**【版本資訊】** Master PRD v2.1.19（2026-11-20 修訂稿）  
+**【本次修訂重點】**  
+1\. 正式專案名稱統一為「拾暖伴伴 (shinuan)」。  
+2\. 將 Monorepo 根目錄由 ai-virtual-pet/ 調整為 shinuan/，並更新專案目標目錄結構與 Phase A 初期建立範圍。  
+3\. 明確區分 Phase A、Phase B 及 Future Phase 的實作範圍（將原 local-cli 的 Phase 0 統一修正為 Phase A）。  
+4\. 遠端設定來源改採 Remote Config Provider 抽象，不綁定 GitLab Raw 或 GitHub Raw 等特定服務。  
+5\. 新增 5.4 AI 協作與工程管理規範，定義 PO、AI Manager、Architect、Developer、QA、Reviewer 的職責、標準工作流程、變更治理及外部 AI 使用邊界。  
+6\. 統一使用根目錄 tests/ 管理 Vitest 單元、整合及長時間模擬測試，並以 test-results/ 保存測試輸出及 QA 驗收證據。  
+**【核心規則保留聲明】** 本次修訂僅調整專案識別、工程目錄、開發階段描述及 AI 協作治理，不變更既有遊戲核心數值、計算公式、基因機率、健康保護規則、Recovery 機制、MoodHealthPenalty、經濟平衡及既有驗收測試預期結果。
 
 # **0\. 核心術語表 (Glossary)**
 
@@ -141,29 +149,50 @@
 
 # **5\. 技術架構與工程原則 (Monorepo \+ Platform Decoupling)**
 
-## **5.1 四大核心架構原則與 Phase 實作邊界標籤**
+## **5.1 嚴格平台解耦與開發階段規範**
 
-1. **嚴格平台解耦 (Platform Decoupling)：**`Game Core` 必須為純 TypeScript 跨平台模組，所有時間、隨機數、存檔、外部設定與平台資訊均透過依賴注入（Dependency Injection）或外部輸入提供，必須能在 Windows Node.js 環境獨立執行與測試。  
-2. **\[Phase A 必須實作\]：** 純 TypeScript Game Core、本地 Config Loader（讀取 content/\*.json，負責檔案讀取與 Schema 驗證，Game Core 只接受已驗證的設定物件）、Clock / RandomGenerator 依賴注入、防損 JSON 存檔與 Vitest 驗收測試。  
-3. **\[Phase A 預留介面\]：** GameRepository 介面、PetViewModel 契約、GameEvent 結構。  
-4. **\[Phase A 不實作 / Future Phase\]：** 遠端 GitLab Raw HTTP 拉取、Android WindowManager 原生模組、iOS WidgetKit、SQLite、Google Drive 備份、Firebase 串門子與 LLM API。  
-   1. **明確禁止在 Game Core 內使用：**`window` / `document`（Browser 專屬）、`fs` / `path` / `process`（Node.js 專屬）、`Date.now()`（導致時間不可控）、`Math.random()`（破壞固定 Seed 重現性）、`React / React Native`、`Kotlin / Swift API` 以及直接發起網路請求。  
-5. **設定檔外部載入與驗證 (Config Loader)：**  
-   1. **Phase A（Windows 本機驗證）：** config-loader 直接讀取專案內 content/ 目錄之靜態 JSON，執行 Schema 驗證後注入 Game Core。  
-   2. **Phase C / D（手機端擴充）：** config-loader 支援從遠端（GitLab Raw）檢查版本號、下載更新本機快取並驗證 Schema；網路中斷或 JSON 損壞時自動退回本機快取或內建預設版本，Game Core 本身不感知設定檔來源。  
-6. **離線優先 (Offline-first) 與免防作弊設計：** 個人陪伴養成無 PvP 與排行榜，不建置伺服器結算；僅保留存檔版本遷移（Migration）、格式防損驗證與本機每日領取防重機制。  
-7. **呈現與存檔分離：** 存檔僅保存基因、數值、記憶與時間戳，不儲存動畫影格；統一由 BehaviorEngine 輸出單一標準結構 BehaviorDecision，再由 GameEngine 轉換為跨平台唯讀契約 PetViewModel 交由各平台 Renderer 呈現。
+1. **嚴格平台解耦 (Platform Decoupling)：** Game Core 必須為純 TypeScript 跨平台模組，所有時間、隨機數、存檔、外部設定與平台資訊均透過依賴注入（Dependency Injection）或外部輸入提供，必須能在 Windows Node.js 環境獨立執行與測試。  
+2. **【Phase A 必須實作】：**  
+   1. 純 TypeScript Game Core。  
+   2. 本機 Config Loader（讀取 `content/*.json`，負責檔案讀取與 Schema 驗證；Game Core 只接受已驗證的設定物件）。  
+3. Clock / RandomGenerator 依賴注入。  
+   1. 防損 JSON 存檔。  
+4. Vitest 單元、整合及長時間模擬驗收測試。  
+5. **【Phase A 預留介面】：**  
+   1. GameRepository 介面。  
+   2. PetViewModel 契約。  
+   3. GameEvent 結構。  
+6. **【Phase A 不實作 / Future Phase】：**  
+   1. 遠端設定檔下載及更新機制。  
+   2. Android WindowManager 原生模組。  
+   3. iOS WidgetKit。  
+   4. SQLite。  
+   5. Google Drive 備份。  
+   6. Firebase 串門子與社交信箱。  
+   7. LLM API。  
+   8. **明確禁止在 Game Core 內使用：**`window` / `document`（Browser 專屬）、`fs` / `path` / `process`（Node.js 專屬）、`Date.now()`（導致時間不可控）、`Math.random()`（破壞固定 Seed 重現性）、React / React Native、Kotlin / Swift API 以及直接發起網路請求。  
+7. **設定檔外部載入與驗證 (Config Loader)：**  
+   1. **Phase A（Windows 本機驗證）：** config-loader 直接讀取專案內 content/ 目錄之靜態 JSON，執行 Schema 驗證後注入 Game Core。Game Core 不負責讀取檔案或解析外部資料來源。  
+   2. **Future Phase（遠端設定擴充）：** config-loader 預留 Remote Config Provider 介面，支援遠端版本檢查、設定檔下載、本機快取、Schema 驗證及載入失敗時的 Fallback 機制。  
+   3. **Provider 解耦原則：**  
+      1. 遠端設定來源不得與 Game Core 耦合。  
+      2. Game Core 只接受已通過 Schema 驗證的設定物件。  
+      3. Remote Config Provider 負責處理遠端資料來源、版本檢查、下載及快取。  
+      4. 實際遠端服務平台由未來部署架構決定，不在本階段指定 GitLab Raw、GitHub Raw 或其他特定服務。  
+      5. 更換遠端 Provider 不得要求修改 Game Core 的遊戲規則或計算邏輯。  
+8. **離線優先 (Offline-first) 與免防作弊設計：** 個人陪伴養成無 PvP 與排行榜，不建置伺服器結算；僅保留存檔版本遷移（Migration）、格式防損驗證與本機每日領取防重機制。  
+9. **呈現與存檔分離：** 存檔僅保存基因、數值、記憶與時間戳，不儲存動畫影格；統一由 BehaviorEngine 輸出單一標準結構 BehaviorDecision，再由 GameEngine 轉換為跨平台唯讀契約 PetViewModel 交由各平台 Renderer 呈現。
 
-## **5.2 技術選型與跨平台呈現契約 (PetViewModel) 實作分工**
+* 
 
-| 架構層級 | 技術選型 | 責任與功能說明 |
+| 架構層級 | 技術選型 | 開發階段與責任 |
 | :---- | :---- | :---- |
-| 遊戲核心 (100% 共用) | 純 TypeScript (packages/game-core) | 負責品種傳承、性格、需求與健康平衡、時間區段模擬 (TimeEngine)、行為仲裁與經濟規則，零平台依賴。 |
-| 設定載入與契約層 | TypeScript (config-loader / contracts) | 負責靜態 JSON 讀取、本機快取管理、Fallback 保護與跨模組資料 Schema 驗證。 |
-| 跨平台 UI 層 | React Native \+ TypeScript | 負責雙平台共用的 App 主房間、領養、商店、商品成分頁與設定介面。 |
-| Android 原生適配器 | Kotlin (WindowManager) | 負責 Android 透明懸浮窗、生命週期管理、觸控拖曳、重力物理與系統電量事件回傳。 |
-| iOS 原生適配器 | Swift / SwiftUI (WidgetKit) | 負責桌面 Widget 狀態展示、App Intents 快捷操作佇列與 App Group 資料共享。 |
-| 本機與雲端資料流 | JSON (Phase A) / SQLite (Mobile) | 初期 (0 成本)：Windows 採防損 JSON 存檔，手機端採 SQLite；後期擴充 Google Drive 個人備份與 Firebase 社交信箱。 |
+| 遊戲核心 (100% 共用) | 純 TypeScript (packages/game-core) | **Phase A 必須實作。**負責品種傳承、性格、需求與健康平衡、TimeEngine、BehaviorEngine 與經濟規則，零平台依賴。 |
+| 設定載入與契約層 | TypeScript (config-loader / contracts) | **Phase A** 實作本機 JSON 載入、Schema 驗證與跨模組資料契約。遠端 Provider 延後至 **Future Phase**。 |
+| 跨平台 UI 層 | React Native \+ TypeScript | **Phase B** 建立跨平台 UI 骨架及 App 主房間、領養、商店、商品成分頁與設定介面。 |
+| Android 原生適配器 | Kotlin (WindowManager) | **Phase B** 驗證 Android 透明懸浮窗、生命週期管理、觸控拖曳、重力物理與系統電量事件回傳。 |
+| iOS 原生適配器 | Swift / SwiftUI (WidgetKit) | **Phase B** 驗證桌面 Widget 狀態展示、App Intents 快捷操作佇列與 App Group 資料共享。 |
+| 本機與雲端資料流 | JSON (Phase A) / SQLite (Mobile) | **Phase A** 使用防損 JSON 存檔；Mobile 階段導入 SQLite；後續才評估 Google Drive 個人備份與 Firebase 社交信箱。 |
 
 * **跨平台統一呈現契約 (PetViewModel Schema)：**  
   * 平台端嚴禁自行計算需求或決定行為，一律唯讀消費 PetViewModel 完整欄位契約：  
@@ -175,31 +204,94 @@
 
 ## **5.3 Monorepo 專案目錄結構**
 
-* **ai-virtual-pet/** (根目錄)  
-  * **packages/**  
-    * **game-core/：**純 TypeScript 遊戲核心（零平台依賴）  
-      * `domain/`：寵物、基因、性格、記憶、需求、健康、背包、經濟  
-      * `engine/`：GameEngine、TimeEngine、BehaviorEngine  
-      * `ports/`：依賴注入介面（Clock、RandomGenerator、GameRepository、PlatformRenderer）  
-    * **contracts/：**跨模組資料契約（Command / Event / ViewModel / Save Schema）  
-    * **config-loader/：**靜態 JSON 載入、本機快取、Schema 驗證與 Fallback 模組  
+本專案正式 Repository 名稱為 shinuan，本機專案根目錄及 GitHub Repository 均以 shinuan/ 為根目錄。以下為專案完整目標目錄結構，各目錄依照 Phase A、Phase B 及 Future Phase 逐步建立，不要求初期一次建立所有目錄或實作所有功能：
+
+* **shinuan/** (根目錄)  
+  * `AGENTS.md`、`CLAUDE.md`、`package.json`、`pnpm-workspace.yaml`、`pnpm-lock.yaml`、`tsconfig.base.json`  
+  * **.claude/agents/：**architect.md、developer.md、qa.md、reviewer.md  
+  * **.github/：**copilot-instructions.md  
+  * **docs/：**PRD/、architecture/、decisions/、acceptance/、秘書工作.md  
+  * **tasks/：**backlog/、in-progress/、review/、completed/、blocked/  
+  * **packages/：**  
+    * **game-core/：**純 TypeScript 遊戲核心（domain/、engine/、ports/）  
+    * **contracts/：**跨模組資料契約  
+    * **config-loader/：**設定檔載入與 Schema 驗證模組  
+  * **apps/：**  
+    * **local-cli/：**Phase A Windows 本機 CLI 測試介面  
+    * **mobile/：**React Native 手機端專案（android/、ios/、src/）  
   * **content/：**版本化靜態設定檔（genetics/、traits/、behavior-rules/、products/）  
-  * **assets/：**貓咪圖層素材、動畫、圖示與音效（cats/、animations/、icons/、sounds/）  
-  * **apps/**  
-    * **local-cli/：**Phase 0 Windows 本機 CLI 測試介面  
-    * **mobile/：**React Native 手機端專案  
-      * `android/`：Kotlin 懸浮窗與物理引擎 Adapter  
-      * `ios/`：SwiftUI Widget 與 App Intents Adapter  
-      * `src/`：共用畫面（領養、商店、圖鑑、設定）  
-  * **tests/：**Vitest 三層自動化測試（單元測試、整合測試、365 天長時間模擬）  
-  * **docs/：**架構文件、遊戲規則與驗收標準（architecture/、game-rules/、acceptance-tests/）
+  * **assets/：**貓咪圖層素材、動畫、圖示與音效（依 Phase B 需求逐步建立）  
+  * **tests/：**unit/、integration/、simulation/  
+  * **test-results/：**測試執行結果、模擬輸出、QA 報告及驗收證據
+
+### **目錄用途及開發階段說明：**
+
+1. **根目錄工程設定：** package.json（Monorepo 根目錄套件及工作指令）、pnpm-workspace.yaml（pnpm Workspace 套件管理）、pnpm-lock.yaml（依賴版本鎖定）、tsconfig.base.json（共用 TypeScript 編譯設定）、AGENTS.md（跨 AI Agent 通用工程規範）、CLAUDE.md（Claude 專用專案工作規範）。  
+2. **AI Agent 設定：** .claude/agents/（Architect、Developer、QA、Reviewer 角色設定及工作規範）、.github/copilot-instructions.md（GitHub Copilot 專案協作指引）。  
+3. **文件管理：** docs/PRD/（正式產品需求文件及版本紀錄）、docs/architecture/（系統架構及技術設計文件）、docs/decisions/（重大技術決策及決策紀錄）、docs/acceptance/（功能驗收條件及測試規格）、docs/秘書工作.md（工作流程參考筆記，不取代正式 PRD、AGENTS.md 或 CLAUDE.md）。  
+4. **任務管理：** tasks/backlog/（尚未開始）、tasks/in-progress/（正在執行）、tasks/review/（等待 QA 或 Reviewer 審查）、tasks/completed/（已完成並通過驗收）、tasks/blocked/（因需求、技術或外部依賴而暫停）。  
+5. **核心套件 (packages/)：** game-core/（純 TypeScript 遊戲核心，包含 domain、engine 與 ports）、contracts/（跨模組資料契約，包含 Command、Event、ViewModel 與 Save Schema）、config-loader/（設定檔載入、Schema 驗證及 Fallback 模組）。  
+6. **應用程式 (apps/)：** local-cli/（Phase A Windows 本機 CLI 測試介面）、mobile/（Phase B 後續建立的 React Native 手機端專案，包含 Android、iOS 與共用 src）。  
+7. **設定與素材 (content/ 與 assets/)：** content/ 放置版本化靜態設定檔；assets/ 依 Phase B 需求逐步建立貓咪圖層素材、動畫、圖示及音效。  
+8. **測試管理（測試程式與測試結果分離）：** 統一於根目錄 tests/ 保存可執行的 Vitest 測試程式碼（tests/unit/ 單元測試、tests/integration/ 跨模組整合測試、tests/simulation/ 365 天長時間模擬及其他時間序列驗證）；test-results/ 專責保存測試執行結果、模擬輸出、QA 報告及驗收證據，不得將測試報告混入測試程式碼目錄。  
+9. **Phase A 初期目錄建立範圍：** 優先建立根目錄工程設定、packages/game-core/、packages/contracts/、packages/config-loader/、apps/local-cli/、content/、tests/、test-results/、docs/ 及必要的 AI Agent 工作規範。apps/mobile/、完整 assets/ 及其他 Future Phase 目錄應依照實際開發階段建立，不得因目錄樹列出而提前擴大 Phase A 工作範圍。
+
+## **5.4 AI 協作與工程管理規範**
+
+### **5.4.1 管理原則**
+
+本專案採用 AI 輔助開發及角色分工模式，以 PO 為最終需求決策與驗收負責人，由 AI Manager 負責任務拆解、派工、進度管理及成果整合。AI Agent 的工作必須遵循最新核准的 Master PRD、工程規範及任務驗收條件，不得以 AI 自行推測取代已核准的產品規格。
+
+### **5.4.2 角色與職責**
+
+1. **PO (Product Owner)：** 負責產品需求、功能優先順序及範圍決策；核准重大架構、遊戲規則及規格變更；決定是否接受新增功能及技術債；負責最終驗收。  
+2. **AI Manager (秘書)：** 接收 PO 提出的需求；讀取 Master PRD、工程規範及既有任務紀錄；將需求拆解為可執行的開發任務；根據任務性質指派 Architect、Developer、QA 及 Reviewer；管理任務狀態、依賴關係、交付成果及阻塞問題；整合各角色成果並向 PO 回報；不得自行修改已核准的核心遊戲規則、數值及重大架構決策。  
+3. **Architect (架構師)：** 負責技術架構分析及設計；評估技術方案、模組依賴與實作風險；提供架構決策建議及必要文件；涉及重大架構變更時，必須先提交 PO 核准。  
+4. **Developer (工程師)：** 依照已核准任務修改 VS Code 專案程式碼；遵循既有架構、型別、程式碼風格及測試規範；執行必要的開發階段驗證；提供修改檔案、實作內容及交付紀錄；不得自行擴大任務範圍或變更未授權的核心規則。  
+5. **QA (品質驗證)：** 獨立執行單元、整合及長時間模擬測試；依照任務驗收條件驗證實際執行結果；提供可追溯的測試紀錄及測試結果；發現問題時建立缺陷紀錄並退回處理；QA 不得自行修改正式 Game Core 程式碼（必要測試程式及測試資料的調整應限於核准的測試範圍）；Developer 自行執行的開發驗證不得取代 QA 獨立驗收。  
+6. **Reviewer (審查者)：** 檢查程式碼品質、架構一致性及潛在風險；檢查修改是否符合 PRD、工程規範及任務驗收條件；確認測試覆蓋及錯誤處理是否足夠；提供審查結論及必要修改意見。
+
+### **5.4.3 標準 AI 工作流程**
+
+PO 提出需求 ➔ AI Manager 分析需求及拆解任務 ➔ Architect 技術分析（必要時） ➔ PO 核准重大設計或範圍變更（必要時） ➔ Developer 執行程式碼修改 ➔ QA 獨立執行測試 ➔ Reviewer 審查程式碼及測試結果 ➔ AI Manager 整合成果及更新任務狀態 ➔ PO 最終驗收。
+
+7. 任務如不涉及架構變更，可由 AI Manager 直接指派 Developer，不必強制每個任務都經過 Architect。  
+8. QA 與 Reviewer 必須保持驗證及審查職責，不得因 Developer 宣稱已完成而省略驗收。
+
+### **5.4.4 任務管理規範**
+
+所有正式開發任務必須具有以下資訊：任務識別碼（Task ID）、任務名稱及目標、相關 PRD 章節或規格條款、修改範圍及禁止修改範圍、執行角色及負責人、前置依賴及相關任務、明確驗收條件、測試要求、執行結果及交付紀錄。
+
+| 狀態 | 說明 |
+| :---- | :---- |
+| Backlog | 尚未開始 |
+| In Progress | 正在執行 |
+| Review | 等待測試或審查 |
+| Completed | 已通過驗收 |
+| Blocked | 因問題或依賴而阻塞 |
+
+任務狀態不得僅因程式碼已修改而標記為 Completed，必須完成規定的 QA 驗證及 Reviewer 審查。
+
+### **5.4.5 變更治理及權限邊界**
+
+9. **PRD 保護：** AI Agent 不得自行修改已核准的核心遊戲數值、公式、基因機率及健康保護規則。需要調整時，必須提出變更理由、影響範圍及驗證計畫，經 PO 核准後才能修改。  
+10. **任務範圍保護：** Developer 不得自行擴大任務範圍；發現必要的額外修改時，應先回報 AI Manager。  
+11. **Git 操作保護：** git commit、push、reset、clean 等可能影響版本歷史或工作目錄的操作，必須依 PO 授權執行，不得擅自丟棄或覆蓋未提交的使用者修改。  
+12. **依賴套件保護：** 安裝、移除或更新依賴套件前，應先確認必要性、版本及影響範圍，依專案授權流程執行。  
+13. **檔案保護：** 不得未經確認覆蓋既有設定檔、PRD 或其他正式文件；修改前應確認目前版本及工作目錄狀態。  
+14. **測試獨立性：** Developer 的開發驗證不能取代 QA 驗收；QA 的測試結果必須可追溯。  
+15. **決策紀錄：** 重大架構及產品決策應保存於 docs/decisions/，避免不同 AI Agent 在不同工作階段產生互相矛盾的假設。
+
+### **5.4.6 外部 AI 工具協作**
+
+外部 AI 工具屬於輔助開發與審查工具，不屬於 AI Manager 可自動控制的 Subagent。外部 AI 的技術建議、程式碼及審查結果，應透過任務文件、技術報告或人工交接方式整合，不得直接視為已核准的產品規格、架構決策或測試通過證據。
 
 # **6\. 長期留存與防流失機制 (User Retention)**
 
-1. **破壞第四面牆的情境彩蛋：** 偵測深夜使用手機時，寵物做出催促睡覺的肢體反應（打哈欠、指著時鐘圖示），且不阻止玩家主動互動。  
-2. **動態偏好與挑食機制：** 寵物偶爾對單一食物失去新鮮感，引導玩家探索商店內其他商品與成分。  
-3. **照護暫停保護機制 (Care Pause)：** 針對忙碌或出差玩家提供無懲罰的暫停衰退保護，維持零壓力陪伴定位。  
-4. **微型月卡與送養重置機制（商業驗證後導入）：** 月卡定位為純裝飾與便利（如專屬房間背景、特殊動畫、照護歷史紀錄），絕不將「避免寵物受苦」作為付費門檻；送養重置須經二次確認，重置目前寵物養成狀態但保留全域設定與已解鎖圖鑑。
+16. **破壞第四面牆的情境彩蛋：** 偵測深夜使用手機時，寵物做出催促睡覺的肢體反應（打哈欠、指著時鐘圖示），且不阻止玩家主動互動。  
+17. **動態偏好與挑食機制：** 寵物偶爾對單一食物失去新鮮感，引導玩家探索商店內其他商品與成分。  
+18. **照護暫停保護機制 (Care Pause)：** 針對忙碌或出差玩家提供無懲罰的暫停衰退保護，維持零壓力陪伴定位。  
+19. **微型月卡與送養重置機制（商業驗證後導入）：** 月卡定位為純裝飾與便利（如專屬房間背景、特殊動畫、照護歷史紀錄），絕不將「避免寵物受苦」作為付費門檻；送養重置須經二次確認，重置目前寵物養成狀態但保留全域設定與已解鎖圖鑑。
 
 # **7\. 開發與實作路線圖 (Windows 核心驗證 ➔ 雙平台 MVP)**
 
@@ -222,35 +314,35 @@
 
 ### **8.A.1 完整寵物與基因資料模型 (PetState & PetGenetics Schema)**
 
-1. **PetGenetics（生成後永久鎖定，隨版本升級不得重算）：**  
-   * `seed` (string)：生成該貓咪時使用的隨機種子  
-   * `prngAlgorithmVersion` (string)：偽隨機數演算法識別碼（如 "mulberry32-v1"）  
-   * `geneticsVersion` (string)：遺傳邏輯版本號（如 "1.0.0"）  
-   * `rulesVersion` (string)：品種與相容性設定檔版本號（如 "v1"）  
-   * `fatherBreed` / `motherBreed` (BreedId)：父母品種識別碼  
-   * `appearance` (PetAppearance)：最終確定的 7 大圖層 ID 與 colorParams（唯一渲染依據）  
-2. **PetState（主存檔核心實體）：**  
-   * `id` (string)：唯一識別碼 (UUID)  
-   * `name` (string)：貓咪名稱（1\~12 字元）  
-   * `ageInDays` (number)：遊戲累計天數（預設 0）  
-   * `growthStage` ("kitten" \| "young" \| "adult" \| "senior")：外觀成長階段（MVP 固定為 "adult"）  
-   * `genetics` (PetGenetics)：不可變遺傳與外觀資料  
-   * `basePersonality` (object)：基礎人格數值（0\~100）：affection（親人）、laziness（慵懶）、tsundere（傲嬌）、curiosity（好奇）  
-   * `quirks` (QuirkId\[\])：小怪癖 ID 陣列（最多 2 個）  
-   * `memories` (object)：行為統計記憶（totalPets、totalPlays、foodCategoryCounts、dailyBuckets: Record\<string, { pets: number; plays: number; wetFoods: number; premiumFoods: number; totalInteractions: number }\>，保留最近 30 個本地日期 YYYY-MM-DD 鍵值，超過 30 日自動滾動清理）。計算時機：每次執行有效互動指令（FeedPet、PetCat、PlayWithPet）後立即重算 basePersonality；每次開啟 App 跨日結算時亦重算一次。  
-   * `needs` (object)：即時需求數值（嚴格限制 0\~100）：hunger（飽食）、hydration（水分）、mood（心情）  
-   * `health` (number)：健康值（嚴格限制 10\~100，設 10 為保護下限）  
-   * `recoveryState` ("NORMAL" \| "CRITICAL" \| "RECOVERY\_BOOST" \| "NATURAL\_RECOVERY")：健康狀態機階段  
-   * `recoveryBoostAccumulatedHours` (number)：當前救援週期已累積之有效加速恢復時數（上限 2.0 小時）  
-   * `lowMoodDuration` ({ below40Hours: number; below20Hours: number })：連續低心情持續時間（小時），隨存檔持久化以防重啟重置  
-   * `isCarePaused` (boolean)：照護暫停保護開關（預設 false）  
-   * `coins` (number)：持有積分（開局預設 200，不得為負數）  
-   * `inventory` (Record\<ItemId, number\>)：背包物品數量表  
-   * `lastSimulatedAt` (number)：最後模擬結算 Unix 時間戳 (ms)（時間單一權威來源）
+10. **PetGenetics（生成後永久鎖定，隨版本升級不得重算）：**  
+    * `seed` (string)：生成該貓咪時使用的隨機種子  
+    * `prngAlgorithmVersion` (string)：偽隨機數演算法識別碼（如 "mulberry32-v1"）  
+    * `geneticsVersion` (string)：遺傳邏輯版本號（如 "1.0.0"）  
+    * `rulesVersion` (string)：品種與相容性設定檔版本號（如 "v1"）  
+    * `fatherBreed` / `motherBreed` (BreedId)：父母品種識別碼  
+    * `appearance` (PetAppearance)：最終確定的 7 大圖層 ID 與 colorParams（唯一渲染依據）  
+11. **PetState（主存檔核心實體）：**  
+    * `id` (string)：唯一識別碼 (UUID)  
+    * `name` (string)：貓咪名稱（1\~12 字元）  
+    * `ageInDays` (number)：遊戲累計天數（預設 0）  
+    * `growthStage` ("kitten" \| "young" \| "adult" \| "senior")：外觀成長階段（MVP 固定為 "adult"）  
+    * `genetics` (PetGenetics)：不可變遺傳與外觀資料  
+    * `basePersonality` (object)：基礎人格數值（0\~100）：affection（親人）、laziness（慵懶）、tsundere（傲嬌）、curiosity（好奇）  
+    * `quirks` (QuirkId\[\])：小怪癖 ID 陣列（最多 2 個）  
+    * `memories` (object)：行為統計記憶（totalPets、totalPlays、foodCategoryCounts、dailyBuckets: Record\<string, { pets: number; plays: number; wetFoods: number; premiumFoods: number; totalInteractions: number }\>，保留最近 30 個本地日期 YYYY-MM-DD 鍵值，超過 30 日自動滾動清理）。計算時機：每次執行有效互動指令（FeedPet、PetCat、PlayWithPet）後立即重算 basePersonality；每次開啟 App 跨日結算時亦重算一次。  
+    * `needs` (object)：即時需求數值（嚴格限制 0\~100）：hunger（飽食）、hydration（水分）、mood（心情）  
+    * `health` (number)：健康值（嚴格限制 10\~100，設 10 為保護下限）  
+    * `recoveryState` ("NORMAL" \| "CRITICAL" \| "RECOVERY\_BOOST" \| "NATURAL\_RECOVERY")：健康狀態機階段  
+    * `recoveryBoostAccumulatedHours` (number)：當前救援週期已累積之有效加速恢復時數（上限 2.0 小時）  
+    * `lowMoodDuration` ({ below40Hours: number; below20Hours: number })：連續低心情持續時間（小時），隨存檔持久化以防重啟重置  
+    * `isCarePaused` (boolean)：照護暫停保護開關（預設 false）  
+    * `coins` (number)：持有積分（開局預設 200，不得為負數）  
+    * `inventory` (Record\<ItemId, number\>)：背包物品數量表  
+    * `lastSimulatedAt` (number)：最後模擬結算 Unix 時間戳 (ms)（時間單一權威來源）
 
 ### **8.A.2 初期收錄 6 大基礎品種初始特徵池 (breeds.v1.json) 與變異分布**
 
-3. **權重池配置與稀有突變分布 (traits.v1.json)：** 各品種在七大圖層上的預設候選池規則如下：coatPattern（花色圖層）具 70% 主花色 / 30% 次花色雙候選池（米克斯 tabby\_mackerel 70% / calico 30%、曼赤肯 bicolor\_tuxedo 70% / calico 30%、布偶 colorpoint 70% / bicolor\_tuxedo 30%、英短 solid 70% / tabby\_mackerel 30%、異國 tabby\_mackerel 70% / colorpoint 30%、緬因 tabby\_mackerel 70% / tortoiseshell 30%）；其餘 6 大圖層（head、ears、eyes、pupilColor、tail、body）各品種預設為 100% 品種代表特徵（如表格 8.A.2 所列之七層完整定義），跨品種混合透過父母各 40% 與 20% 變異路徑實現多樣性。第二階段變異路徑中，15% 全品種重組僅從合法通用特徵白名單（head: \["standard\_round", "chubby\_round", "square\_muzzle"\]、ears: \["pointed\_medium", "small\_round", "tufted\_large"\]、eyes: \["almond", "big\_round", "droopy\_cute"\]、pupilColor: \["amber", "emerald", "sapphire", "copper"\]、coatPattern: \["solid", "tabby\_mackerel", "bicolor\_tuxedo", "colorpoint", "calico", "tortoiseshell"\]、tail: \["long\_straight", "fluffy\_plume", "short\_bobtail"\]、body: \["normal", "chubby", "large\_fluffy"\]；排除專屬極端骨架 flat\_face、short\_legs 與 giant\_fluffy）中等權重隨機抽取；25% 稀有突變池（總機率 5%）採等權重分布（各 1.25%）：ears: "folded\_tip"、pupilColor: "heterochromia\_blue\_gold"、coatPattern: "starry\_rare"、tail: "kinked\_kirin"。
+12. **權重池配置與稀有突變分布 (traits.v1.json)：** 各品種在七大圖層上的預設候選池規則如下：coatPattern（花色圖層）具 70% 主花色 / 30% 次花色雙候選池（米克斯 tabby\_mackerel 70% / calico 30%、曼赤肯 bicolor\_tuxedo 70% / calico 30%、布偶 colorpoint 70% / bicolor\_tuxedo 30%、英短 solid 70% / tabby\_mackerel 30%、異國 tabby\_mackerel 70% / colorpoint 30%、緬因 tabby\_mackerel 70% / tortoiseshell 30%）；其餘 6 大圖層（head、ears、eyes、pupilColor、tail、body）各品種預設為 100% 品種代表特徵（如表格 8.A.2 所列之七層完整定義），跨品種混合透過父母各 40% 與 20% 變異路徑實現多樣性。第二階段變異路徑中，15% 全品種重組僅從合法通用特徵白名單（head: \["standard\_round", "chubby\_round", "square\_muzzle"\]、ears: \["pointed\_medium", "small\_round", "tufted\_large"\]、eyes: \["almond", "big\_round", "droopy\_cute"\]、pupilColor: \["amber", "emerald", "sapphire", "copper"\]、coatPattern: \["solid", "tabby\_mackerel", "bicolor\_tuxedo", "colorpoint", "calico", "tortoiseshell"\]、tail: \["long\_straight", "fluffy\_plume", "short\_bobtail"\]、body: \["normal", "chubby", "large\_fluffy"\]；排除專屬極端骨架 flat\_face、short\_legs 與 giant\_fluffy）中等權重隨機抽取；25% 稀有突變池（總機率 5%）採等權重分布（各 1.25%）：ears: "folded\_tip"、pupilColor: "heterochromia\_blue\_gold"、coatPattern: "starry\_rare"、tail: "kinked\_kirin"。
 
 | 品種 ID (BreedId) | 顯示名稱 | 初始預設特徵池 (Trait Pool \- 七層完整定義) | 基礎性格傾向 (0\~100) | 合法毛色 HEX 色碼區間 (Shader 基準) |
 | :---- | :---- | :---- | :---- | :---- |
@@ -263,35 +355,35 @@
 
 ### **8.A.3 七大外觀圖層枚舉與確定性相容修正規則 (appearance-compatibility.v1.json)**
 
-4. **七大圖層枚舉：**  
-   * `head`：`standard_round`、`chubby_round`、`flat_face`、`square_muzzle`  
-   * `ears`：`pointed_medium`、`small_round`、`tufted_large`、`folded_tip`（稀有突變）  
-   * `eyes`：`almond`、`big_round`、`droopy_cute`  
-   * `pupilColor`：`amber`、`emerald`、`sapphire`、`copper`、`heterochromia_blue_gold`（稀有突變）  
-   * `coatPattern`：`solid`、`tabby_mackerel`、`bicolor_tuxedo`、`colorpoint`、`calico`、`tortoiseshell`、`starry_rare`（稀有突變）  
-   * `tail`：`long_straight`、`fluffy_plume`、`short_bobtail`、`kinked_kirin`（稀有突變）  
-   * `body`：`normal`、`chubby`、`short_legs`、`large_fluffy`、`giant_fluffy`  
-5. **確定性相容修正規則 (appearance-compatibility.v1.json)：**  
-   * **規則 1（跨圖層：扁臉與大型骨架比例衝突）：** 若 head \=== "flat\_face" 且 body \=== "giant\_fluffy"，為避免扁臉搭配巨型緬因骨架比例失真，強制將 body 修正為 "chubby"。  
-   * **規則 2（跨圖層：重點色與花色遮罩衝突）：** 若 coatPattern \=== "colorpoint" 且 pupilColor \=== "amber"，強制將 pupilColor 修正為 "sapphire"。  
-   * **規則 3（跨圖層：稀有折耳與緬因大耳羽衝突）：** 若 ears \=== "folded\_tip" 且 body \=== "giant\_fluffy"，強制將 ears 修正為 "tufted\_large"。  
-   * **規則 5（終極安全回退 SAFE\_DEFAULT\_APPEARANCE）：** 若經過單次規則替換後最終驗證仍不合法，直接退回完整七層安全預設組合 SAFE\_DEFAULT\_APPEARANCE：`{ head: "standard_round", ears: "pointed_medium", eyes: "almond", pupilColor: "amber", coatPattern: "solid", tail: "long_straight", body: "normal" }`。  
-   * **註：** 未來若開放其他遺傳組合產生 flat\_face \+ giant\_fluffy，維持 body 修正為 "chubby" 以確保比例協調。
+13. **七大圖層枚舉：**  
+    * `head`：`standard_round`、`chubby_round`、`flat_face`、`square_muzzle`  
+    * `ears`：`pointed_medium`、`small_round`、`tufted_large`、`folded_tip`（稀有突變）  
+    * `eyes`：`almond`、`big_round`、`droopy_cute`  
+    * `pupilColor`：`amber`、`emerald`、`sapphire`、`copper`、`heterochromia_blue_gold`（稀有突變）  
+    * `coatPattern`：`solid`、`tabby_mackerel`、`bicolor_tuxedo`、`colorpoint`、`calico`、`tortoiseshell`、`starry_rare`（稀有突變）  
+    * `tail`：`long_straight`、`fluffy_plume`、`short_bobtail`、`kinked_kirin`（稀有突變）  
+    * `body`：`normal`、`chubby`、`short_legs`、`large_fluffy`、`giant_fluffy`  
+14. **確定性相容修正規則 (appearance-compatibility.v1.json)：**  
+    * **規則 1（跨圖層：扁臉與大型骨架比例衝突）：** 若 head \=== "flat\_face" 且 body \=== "giant\_fluffy"，為避免扁臉搭配巨型緬因骨架比例失真，強制將 body 修正為 "chubby"。  
+    * **規則 2（跨圖層：重點色與花色遮罩衝突）：** 若 coatPattern \=== "colorpoint" 且 pupilColor \=== "amber"，強制將 pupilColor 修正為 "sapphire"。  
+    * **規則 3（跨圖層：稀有折耳與緬因大耳羽衝突）：** 若 ears \=== "folded\_tip" 且 body \=== "giant\_fluffy"，強制將 ears 修正為 "tufted\_large"。  
+    * **規則 5（終極安全回退 SAFE\_DEFAULT\_APPEARANCE）：** 若經過單次規則替換後最終驗證仍不合法，直接退回完整七層安全預設組合 SAFE\_DEFAULT\_APPEARANCE：`{ head: "standard_round", ears: "pointed_medium", eyes: "almond", pupilColor: "amber", coatPattern: "solid", tail: "long_straight", body: "normal" }`。  
+    * **註：** 未來若開放其他遺傳組合產生 flat\_face \+ giant\_fluffy，維持 body 修正為 "chubby" 以確保比例協調。
 
 ### **8.A.4 遺傳生成執行優先級 (Genetics Priority)**
 
 為避免特殊骨架規則與一般 40/40/20 規則衝突，強制規定執行順序：
 
-6. **步驟 1（特殊顯性骨架規則優先，僅作用於指定圖層）：**  
-   * **曼赤肯 (munchkin) body 規則：**  
-     * 若父母雙方皆為 `munchkin`（雙親同種）：子代 `body` 為 **75%** `short_legs` **/ 25%** `normal`（避免重複計算「另一方體型」）。  
-     * 若僅一方為 `munchkin`（跨品種配對）：子代 `body` 為 **50%** `short_legs` **/ 25% 另一方品種之** `body`（若另一方為 maine\_coon 則為 giant\_fluffy，允許 short\_legs 與 giant\_fluffy 共存形成短腿巨型長毛體型） / **25%** `normal`。  
-   * **異國短/長毛 (exotic) head 規則：**  
-     * 若父母雙方皆為 `exotic`（雙親同種）：子代 `head` 為 **80%** `flat_face` **/ 20%** `standard_round`（避免 100% 鎖死單一頭型）。  
-     * 若僅一方為 `exotic`（跨品種配對）：子代 `head` 為 **45%** `flat_face` **/ 55% 另一方品種之** `head`。  
-7. **步驟 2（一般圖層獨立 40/40/20 抽選）：** 其餘未鎖定圖層依固定順序（head ➔ ears ➔ eyes ➔ pupilColor ➔ coatPattern ➔ tail ➔ body）逐一獨立抽選：40% 父系預設特徵、40% 母系預設特徵、20% 變異路徑（變異路徑內 75% 全品種特徵池重組、25% 稀有突變池）。  
-8. **步驟 3（確定性相容性修正）：** 依 8.A.3 規則執行單次衝突替換與最終驗證。  
-9. **步驟 4（動態毛色微調）：** 依據 `seed` 在合法 HEX 區間內進行 `±8%` 明度與飽和度微調。
+15. **步驟 1（特殊顯性骨架規則優先，僅作用於指定圖層）：**  
+    * **曼赤肯 (munchkin) body 規則：**  
+      * 若父母雙方皆為 `munchkin`（雙親同種）：子代 `body` 為 **75%** `short_legs` **/ 25%** `normal`（避免重複計算「另一方體型」）。  
+      * 若僅一方為 `munchkin`（跨品種配對）：子代 `body` 為 **50%** `short_legs` **/ 25% 另一方品種之** `body`（若另一方為 maine\_coon 則為 giant\_fluffy，允許 short\_legs 與 giant\_fluffy 共存形成短腿巨型長毛體型） / **25%** `normal`。  
+    * **異國短/長毛 (exotic) head 規則：**  
+      * 若父母雙方皆為 `exotic`（雙親同種）：子代 `head` 為 **80%** `flat_face` **/ 20%** `standard_round`（避免 100% 鎖死單一頭型）。  
+      * 若僅一方為 `exotic`（跨品種配對）：子代 `head` 為 **45%** `flat_face` **/ 55% 另一方品種之** `head`。  
+16. **步驟 2（一般圖層獨立 40/40/20 抽選）：** 其餘未鎖定圖層依固定順序（head ➔ ears ➔ eyes ➔ pupilColor ➔ coatPattern ➔ tail ➔ body）逐一獨立抽選：40% 父系預設特徵、40% 母系預設特徵、20% 變異路徑（變異路徑內 75% 全品種特徵池重組、25% 稀有突變池）。  
+17. **步驟 3（確定性相容性修正）：** 依 8.A.3 規則執行單次衝突替換與最終驗證。  
+18. **步驟 4（動態毛色微調）：** 依據 `seed` 在合法 HEX 區間內進行 `±8%` 明度與飽和度微調。
 
 ## **8.B 動畫與行為決策仲裁規格 (BehaviorEngine & FSM Spec)**
 
@@ -401,9 +493,9 @@ BehaviorEngine 輸出單一標準結構 BehaviorDecision（animationId、tailSta
 1. **時間戳單一權威來源：** PetState.lastSimulatedAt 為遊戲模擬時間的唯一權威來源；資料庫外層之 created\_at 與 updated\_at 僅供維運追蹤，寫入時由 Adapter 注入之 Clock 同步填入，不得與 PetState.lastSimulatedAt 產生雙頭馬車。  
 2. **Phase A (Windows 本機)：** 採用防損 JSON 寫檔流程（先寫入 save.tmp ➔ 驗證 JSON 結構 ➔ 備份舊檔為 save.bak ➔ 原子替換為 save.json）。  
 3. **Phase C (手機端 SQLite)：**  
-   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.18 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
+   1. `game_saves` 表包含：id、schema\_version（目前為 2；此 Schema 版本於 Master PRD v2.1.4 引入，v2.1.5 \~ v2.1.19 未變更）、game\_core\_version、pet\_state\_json（必須完整序列化保存整個 PetState，明確包含 genetics、appearance、basePersonality、quirks、memories、needs、health、recoveryState、recoveryBoostAccumulatedHours、lowMoodDuration、isCarePaused、coins、inventory、lastSimulatedAt）、daily\_limits\_json、created\_at、updated\_at。  
    2. `game_events` 表僅作為行為追蹤與除錯日誌（非主存檔來源），定期清理超過 30 天之舊紀錄。  
-4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.18 未變更）
+4. **存檔升級遷移規則 (Migration)：** 每次 App 升級偵測到 `schema_version` 落後時，先自動備份原始存檔再執行漸進式遷移腳本（`v1 -> v2`），當載入 schema\_version \= 1 的舊存檔時，自動補齊 recoveryBoostAccumulatedHours: 0、lowMoodDuration: { below40Hours: 0, below20Hours: 0 } 與 isCarePaused: false 等預設值，**嚴禁因版本更新而重置或重新生成既有貓咪的外觀與個性**；若遷移失敗則安全回退至備份檔。（註：v2.1.5 \~ v2.1.19 未變更）
 
 ### **8.E.2 核心自動化驗收測試案例 (Vitest Acceptance Criteria)**
 
@@ -489,22 +581,27 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
 
 ## **9.1 MVP 明確納入 (Phase A \~ D)**
 
-5. 單隻貓咪領養與 7 層確定性外觀生成、三層性格行為決策、0.25 小時步進離線時間差補算、健康救援狀態機、無懲罰 Care Pause 照護暫停模式、防損本機存檔與 Save Migration、Android 全域懸浮窗、iOS App 內養成與狀態 Widget、積分商店與商品營養分析探索。
+20. 單隻貓咪領養與 7 層確定性外觀生成、三層性格行為決策、0.25 小時步進離線時間差補算、健康救援狀態機、無懲罰 Care Pause 照護暫停模式、防損本機存檔與 Save Migration、Android 全域懸浮窗、iOS App 內養成與狀態 Widget、積分商店與商品營養分析探索。
 
 ## **9.2 MVP 明確排除 (Non-Goals，保留介面但延後至 Phase E)**
 
-6. 多隻貓咪同時飼養、即時背景常駐耗電服務、伺服器端防作弊結算、好友即時連線與串門子、GPS/LBS 戶外散步與跳蚤系統、自動截圖相簿、LLM 自由對話與付費月卡。
+21. 多隻貓咪同時飼養、即時背景常駐耗電服務、伺服器端防作弊結算、好友即時連線與串門子、GPS/LBS 戶外散步與跳蚤系統、自動截圖相簿、LLM 自由對話與付費月卡。
 
 # **10\. 隱私、權限與錯誤處理降級規範 (Privacy & Fallback)**
 
 ## **10.1 最小權限與資料隱私規範**
 
-7. Android 僅於完成領養後引導授權 SYSTEM\_ALERT\_WINDOW（拒絕授權仍可於 App 內正常遊玩）；計步器與定位權限於 MVP 階段完全不申請。  
-8. 問卷與統計僅於使用者明確同意下收集不可識別個人的匿名彙總數據，嚴禁販售個別使用者行為軌跡或定位紀錄。
+22. Android 僅於完成領養後引導授權 SYSTEM\_ALERT\_WINDOW（拒絕授權仍可於 App 內正常遊玩）；計步器與定位權限於 MVP 階段完全不申請。  
+23. 問卷與統計僅於使用者明確同意下收集不可識別個人的匿名彙總數據，嚴禁販售個別使用者行為軌跡或定位紀錄。
 
 ## **10.2 異常降級與 Fallback 策略**
 
-1. **遠端設定檔失敗：** 網路中斷或遠端 JSON 驗證失敗時，無縫使用本機快取或內建 `v1` 預設設定檔。  
+1. **遠端設定檔失敗：** 遠端設定載入功能僅適用於已導入 Remote Config Provider 的未來階段：  
+   1. 網路中斷時，使用已驗證的本機快取設定。  
+      2. 遠端 JSON 下載失敗或 Schema 驗證失敗時，不得將未驗證資料注入 Game Core。  
+      3. 本機快取不存在或無法通過驗證時，使用內建且已驗證的預設設定檔。  
+      4. 若無任何可用的有效設定檔，應停止載入依賴該設定的功能並回報明確錯誤，不得以不完整資料繼續執行。  
+      5. Game Core 不得直接連線或依賴特定遠端服務；設定來源由 Remote Config Provider 管理。  
    2. **系統時間倒退異常：** 若偵測到裝置時間倒退（now \< lastSimulatedAt），TimeEngine 忽略負時間差（Δt \= 0）並記錄異常時間事件，**嚴禁覆寫或修改原本的 lastSimulatedAt**，待裝置時間恢復正常區間後再行補算，防止時間回撥造成異常暴增補算。  
    3. **權限撤銷：** 若使用者於系統設定撤銷 Android 懸浮窗權限，App 自動切換為「App 內模式」並保存進度，不產生閃退。
 
@@ -512,12 +609,12 @@ RD 完成 Phase A 時必須通過以下 9 項核心測試與照護負擔驗證�
 
 ## **11.1 獨立版本號管理**
 
-9. 系統將 gameCoreVersion、prngAlgorithmVersion、geneticsVersion、contentVersion 與 saveSchemaVersion 獨立分開管理，確保更新商品目錄或調整數值平衡時，不會破壞既有貓咪外觀或玩家存檔。
+24. 系統將 gameCoreVersion、prngAlgorithmVersion、geneticsVersion、contentVersion 與 saveSchemaVersion 獨立分開管理，確保更新商品目錄或調整數值平衡時，不會破壞既有貓咪外觀或玩家存檔。
 
 ## **11.2 Sprint 執行順序**
 
-10. **Sprint 1（Phase A \- Windows Core 骨架與基因引擎）：** 建立 pnpm Monorepo、contracts、config-loader（Local 模式）、PetState 模型與 GeneticsEngine（通過 TC-01、TC-02）。  
-11. **Sprint 2（Phase A \- 時間、健康救援與經濟引擎）：** 實作 TimeEngine（0.25 小時區段步進與時間倒退保護）、健康救援狀態機、EconomyEngine、背包系統與防損 JSON 存檔（通過 TC-03、TC-04、TC-07）。  
-12. **Sprint 3（Phase A \- 行為決策、CLI 驗收與長時模擬）：** 實作 BehaviorEngine 三層決策與同級仲裁、CLI 互動操作介面、365 天長時模擬與每日照護負擔驗證（通過 TC-05、TC-06、TC-08、TC-09）。  
-13. **Sprint 4（Phase B \- 雙平台渲染 PoC）：** 建立單隻測試貓，驗證 React Native、Android Kotlin 懸浮窗與 iOS SwiftUI Widget 消費同一份 PetViewModel 之一致性。
+25. **Sprint 1（Phase A \- Windows Core 骨架與基因引擎）：** 建立 pnpm Monorepo、contracts、config-loader（Local 模式）、PetState 模型與 GeneticsEngine（通過 TC-01、TC-02）。  
+26. **Sprint 2（Phase A \- 時間、健康救援與經濟引擎）：** 實作 TimeEngine（0.25 小時區段步進與時間倒退保護）、健康救援狀態機、EconomyEngine、背包系統與防損 JSON 存檔（通過 TC-03、TC-04、TC-07）。  
+27. **Sprint 3（Phase A \- 行為決策、CLI 驗收與長時模擬）：** 實作 BehaviorEngine 三層決策與同級仲裁、CLI 互動操作介面、365 天長時模擬與每日照護負擔驗證（通過 TC-05、TC-06、TC-08、TC-09）。  
+28. **Sprint 4（Phase B \- 雙平台渲染 PoC）：** 建立單隻測試貓，驗證 React Native、Android Kotlin 懸浮窗與 iOS SwiftUI Widget 消費同一份 PetViewModel 之一致性。
 
